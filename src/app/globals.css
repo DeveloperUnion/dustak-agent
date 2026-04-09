@@ -1,26 +1,153 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Dustalk palette (参照画像準拠) ──────────────────── */
+  --bg: #ffffff;
+  --bg-soft: #f5f8fd;
+  --bg-band: #e8f0fc;
+  --surface: #ffffff;
+  --surface-elev: #fbfcfe;
+
+  --text: #1f2937;
+  --text-soft: #4b5563;
+  --text-mute: #9ca3af;
+
+  --brand: #2b6ce6;
+  --brand-strong: #1e57c4;
+  --brand-soft: #6b9aef;
+  --brand-pale: #e8f0fc;
+  --brand-paler: #f5f8fd;
+
+  --line: #e5e7eb;
+  --line-blue: #bfd4f2;
+  --line-strong: #d1d5db;
+
+  --background: var(--bg);
+  --foreground: var(--text);
+
+  /* ── 旧トークンの後方互換エイリアス ──────────────────── */
+  --ivory: var(--bg-soft);
+  --ivory-deep: var(--bg-band);
+  --paper: var(--surface);
+  --ink: var(--text);
+  --ink-2: var(--text);
+  --ink-soft: var(--text-soft);
+  --ink-mute: var(--text-mute);
+
+  --wa-header: var(--brand);
+  --wa-header-text: #ffffff;
+  --wa-bg: var(--bg-soft);
+  --wa-bubble-out: var(--brand);
+  --wa-bubble-in: var(--surface);
+  --wa-text: var(--text);
+  --wa-meta: var(--text-mute);
+  --wa-divider: var(--line);
+  --wa-input-bg: var(--surface);
+  --wa-composer-bg: var(--bg-soft);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans-jp);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans-jp), "Hiragino Sans", "Yu Gothic Medium",
+    "Yu Gothic", system-ui, sans-serif;
+  font-feature-settings: "palt" 1;
+}
+
+/* ── キャンバス ─────────────────────────────────────── */
+.dustalk-canvas {
+  background-color: #ffffff;
+}
+
+/* 旧 wa-bubble クラスは互換のため残す（テールは廃止） */
+.wa-bubble {
+  position: relative;
+  word-wrap: break-word;
+}
+.wa-bubble-in::before,
+.wa-bubble-out::before {
+  content: none !important;
+}
+
+/* ── 細かい大文字（小キャップス） ────────────────────── */
+.eyebrow {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+/* 旧クラスのエイリアス */
+.font-mincho {
+  font-family: var(--font-sans-jp), "Hiragino Sans", "Yu Gothic Medium", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* ── モーション ─────────────────────────────────────── */
+@keyframes dustalk-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.dustalk-rise {
+  animation: dustalk-rise 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes dustalk-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+.dustalk-dot {
+  animation: dustalk-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes dustalk-status {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(43, 108, 230, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(43, 108, 230, 0);
+  }
+}
+.dustalk-status {
+  animation: dustalk-status 2.4s ease-out infinite;
+}
+
+/* ── スクロールバー ─────────────────────────────────── */
+.dustalk-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.dustalk-scroll::-webkit-scrollbar-thumb {
+  background: rgba(43, 108, 230, 0.22);
+  border-radius: 999px;
+}
+.dustalk-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::selection {
+  background: var(--brand-pale);
+  color: var(--brand-strong);
 }
