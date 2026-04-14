@@ -109,6 +109,7 @@ export default function ChatPage() {
       <ChatThread
         messages={displayMessages}
         loading={loading}
+        onFreeText={(text) => sendText(text)}
         onStepResponse={(stepId, value, label) => {
           if (stepId === BOOTSTRAP_STEP_ID) {
             const flowValue = value as FlowKind;

@@ -7,6 +7,8 @@ interface Props {
   part: ChipsPart;
   /** 単一選択時は label と value、複数選択時は配列 */
   onPick: (value: unknown, displayLabel: string) => void;
+  /** 自由テキスト入力時のコールバック。undefined なら入力欄を非表示。 */
+  onFreeText?: (text: string) => void;
   disabled?: boolean;
   createdAt?: number;
   showTail?: boolean;
@@ -18,8 +20,9 @@ function fmtTime(ms?: number): string {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-export function ChipsBubble({ part, onPick, disabled, createdAt, showTail = true }: Props) {
+export function ChipsBubble({ part, onPick, onFreeText, disabled, createdAt, showTail = true }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [freeText, setFreeText] = useState('');
   const isMulti = part.multi === true;
 
   const toggle = (value: string) => {
@@ -137,6 +140,41 @@ export function ChipsBubble({ part, onPick, disabled, createdAt, showTail = true
               >
                 決定
               </button>
+            </div>
+          )}
+
+          {onFreeText && !disabled && (
+            <div className="mt-3 pl-1.5">
+              <div className="border-t border-[var(--line)] pt-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={freeText}
+                    onChange={(e) => setFreeText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && freeText.trim()) {
+                        onFreeText(freeText.trim());
+                        setFreeText('');
+                      }
+                    }}
+                    placeholder="選択肢にない場合はこちらに入力"
+                    className="flex-1 min-w-0 px-3 py-2 rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface)] text-[13px] text-[var(--text)] placeholder:text-[var(--ink-mute)] focus:outline-none focus:border-[var(--brand)] transition-colors"
+                  />
+                  <button
+                    type="button"
+                    disabled={!freeText.trim()}
+                    onClick={() => {
+                      if (freeText.trim()) {
+                        onFreeText(freeText.trim());
+                        setFreeText('');
+                      }
+                    }}
+                    className="flex-shrink-0 px-4 py-2 rounded-[8px] text-[12px] tracking-[0.1em] bg-[var(--brand)] text-white disabled:bg-[var(--ink-mute)]/40 disabled:cursor-not-allowed transition-all hover:brightness-110"
+                  >
+                    確定する
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

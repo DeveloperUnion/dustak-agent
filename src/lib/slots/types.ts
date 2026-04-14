@@ -6,9 +6,24 @@ export type BuildingKind = '戸建て' | 'マンション・アパート' | '倉
 export type YesNo = 'あり' | 'なし';
 export type DischargeMode = '自分で排出' | '排出を希望';
 
+// Google Places / Geocoding から取得した構造化住所データ
+export interface AddressComponents {
+  postalCode?: string;    // 〒xxx-xxxx
+  prefecture?: string;    // 都道府県
+  city?: string;          // 市区町村
+  ward?: string;          // 区（政令指定都市）
+  town?: string;          // 町名
+  block?: string;         // 番地
+  building?: string;      // 建物名・部屋番号
+  placeId?: string;       // Google Place ID
+  lat?: number;
+  lng?: number;
+}
+
 // ステップ1: 回収・排出場所
 export interface LocationSlot {
   address?: string;
+  addressComponents?: AddressComponents;
   storeName?: string;
   buildingKind?: BuildingKind;
   parking?: YesNo;

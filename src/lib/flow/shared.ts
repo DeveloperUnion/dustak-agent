@@ -2,7 +2,7 @@
 // household.ts にすでに同等の関数があるが循環参照を避けるためここに集約する。
 
 import type { Step } from './types';
-import type { Slots, Item, ProviderChoice, PreferredDate, Frequency } from '@/lib/slots/types';
+import type { Slots, Item, ProviderChoice, PreferredDate, Frequency, AddressComponents } from '@/lib/slots/types';
 import type { SlotPatch } from '@/lib/slots/merge';
 
 export function nextItemId(items: Item[]): string {
@@ -15,7 +15,24 @@ export function nextItemId(items: Item[]): string {
 
 export const STEP_address: Step = {
   id: 'location.address',
-  render: () => [{ kind: 'text', text: '回収先の住所を教えてください。' }],
+  render: () => [
+    {
+      kind: 'widget',
+      widget: 'address_picker' as const,
+      stepId: 'location.address',
+      prompt: '回収先の住所を教えてください。',
+    },
+  ],
+  acceptResponse: (value) => {
+    const v = value as { address: string; components?: AddressComponents };
+    return {
+      location: {
+        address: v.address,
+        ...(v.components ? { addressComponents: v.components } : {}),
+      },
+    };
+  },
+  // Composer からの直接テキスト入力も受付
   acceptText: (text) => ({ location: { address: text } }),
 };
 
@@ -38,6 +55,7 @@ export const STEP_buildingKind: Step = {
         { label: '倉庫', value: '倉庫' },
         { label: 'その他', value: 'その他' },
       ],
+      allowFreeText: true,
     },
   ],
   acceptResponse: (value) => ({
@@ -153,6 +171,7 @@ export function pickProviderStep(item: Item): Step {
           disabled: label === '自治体に依頼',
           disabledReason: label === '自治体に依頼' ? 'この地域では未対応です' : undefined,
         })),
+        allowFreeText: true,
       },
     ],
     acceptResponse: (value) => ({
@@ -231,6 +250,7 @@ export const STEP_businessForm: Step = {
         { label: '有限会社', value: '有限会社' },
         { label: 'その他法人', value: 'その他法人' },
       ],
+      allowFreeText: true,
     },
   ],
   acceptResponse: (value) => ({
@@ -282,9 +302,15 @@ export function quantityStep(item: Item): Step {
         text: `「${item.label}」のおおよその数量を教えてください。(例: 45L × 3袋/日)`,
       },
     ],
-    acceptText: (text) => ({
-      items: [{ id: item.id, estimatedQuantity: text }],
-    }),
+    // acceptText は定義しない → LLM extractor にフォールバックして正規化する
+    llmHint: `現在聞いているのは品目「${item.label}」のおおよその数量です。
+items[].id = "${item.id}" の estimatedQuantity を埋めてください。
+ユーザー入力を以下のような形式に正規化してください:
+- ゴミ袋類: "45L × 3袋/日" "45L × 10袋/週"
+- 家具・家電類: "1台" "高さ180cm × 幅90cm 1点"
+- 重量で表現されている場合: "10kg/週"
+ユーザーの表現が曖昧（例: 「3袋くらい」「たくさん」「だいたい2つ」）でも、そのまま estimatedQuantity に入れてよい（無理に数値化しない）。
+単位や頻度が不明な場合は推測せず、ユーザーの表現を尊重する。`,
   };
 }
 
@@ -297,6 +323,7 @@ export function frequencyStep(item: Item): Step {
         stepId: `item.frequency.${item.id}`,
         prompt: `「${item.label}」の回収頻度は?`,
         options: FREQUENCY_OPTIONS.map((f) => ({ label: f, value: f })),
+        allowFreeText: true,
       },
     ],
     acceptResponse: (value) => ({

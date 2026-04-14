@@ -23,7 +23,9 @@ export function extractorPrompt(
         : '事業者定期回収';
 
   const stepHint = currentStep
-    ? `現在 state machine が聞いているのは: ${currentStep.id}\nユーザーがこの質問に対して自由入力で答えた場合は、まずこの slot を埋めること。`
+    ? `現在 state machine が聞いているのは: ${currentStep.id}\nユーザーがこの質問に対して自由入力で答えた場合は、まずこの slot を埋めること。${
+        currentStep.llmHint ? `\n\n### このステップ固有の指示\n${currentStep.llmHint}` : ''
+      }`
     : '現在 state machine が待っている step はありません。';
 
   const hintLines: string[] = [];
@@ -65,7 +67,7 @@ ${JSON.stringify(slots, null, 2)}
 
 ## slotPatch のキー
 - occupation: 業態の自由表現（例: "ラーメン屋"）。事業者向け
-- location: { address?, storeName?, buildingKind?, parking?, elevator?, dischargeMode?, note? }
+- location: { address?, addressComponents?: { postalCode?, prefecture?, city?, ward?, town?, block?, building?, placeId?, lat?, lng? }, storeName?, buildingKind?, parking?, elevator?, dischargeMode?, note? }
 - items: [{ id: "item-1", label, industrialCategory?, estimatedQuantity?, frequency?, startDate? }]
   - 既存 id を指定すれば差分更新、新しい id なら追加
   - 産廃20分類（事業者の場合のみ）は AI が自動付与してよい

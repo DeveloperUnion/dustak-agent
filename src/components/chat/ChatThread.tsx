@@ -5,14 +5,17 @@ import type { ChatMessage } from '@/types/messages';
 import { TextBubble } from './TextBubble';
 import { ChipsBubble } from './ChipsBubble';
 import { CalendarWidget, type CalendarSelection } from './CalendarWidget';
+import { AddressPickerWidget } from './AddressPickerWidget';
+import type { AddressComponents } from '@/lib/slots/types';
 
 interface Props {
   messages: ChatMessage[];
   loading: boolean;
   onStepResponse: (stepId: string, value: unknown, displayLabel: string) => void;
+  onFreeText: (text: string) => void;
 }
 
-export function ChatThread({ messages, loading, onStepResponse }: Props) {
+export function ChatThread({ messages, loading, onStepResponse, onFreeText }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,6 +97,22 @@ export function ChatThread({ messages, loading, onStepResponse }: Props) {
                     showTail={partShowTail}
                     onPick={(value, label) => {
                       if (p.stepId) onStepResponse(p.stepId, value, label);
+                    }}
+                    onFreeText={p.allowFreeText ? onFreeText : undefined}
+                  />
+                );
+              }
+              if (p.kind === 'widget' && p.widget === 'address_picker') {
+                return (
+                  <AddressPickerWidget
+                    key={j}
+                    part={p}
+                    disabled={!isLast || loading}
+                    createdAt={j === m.parts.length - 1 ? m.createdAt : undefined}
+                    showTail={partShowTail}
+                    onSubmit={(address: string, components?: AddressComponents) => {
+                      if (!p.stepId) return;
+                      onStepResponse(p.stepId, { address, components }, address);
                     }}
                   />
                 );

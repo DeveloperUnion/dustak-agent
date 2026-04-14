@@ -20,10 +20,11 @@ export interface ChipsPart {
   prompt?: string;
   options: ChipOption[];
   multi?: boolean;
+  /** true の場合、選択肢の下に自由入力欄を表示する */
+  allowFreeText?: boolean;
 }
 
-// Widget は将来 image_uploader / address_picker などにも拡張する。
-// MVP では calendar のみ実装。
+// Widget は将来 image_uploader などにも拡張可能。
 export interface CalendarWidgetPart {
   kind: 'widget';
   widget: 'calendar';
@@ -33,7 +34,14 @@ export interface CalendarWidgetPart {
   maxSelections?: number;
 }
 
-export type WidgetPart = CalendarWidgetPart;
+export interface AddressPickerWidgetPart {
+  kind: 'widget';
+  widget: 'address_picker';
+  stepId?: string;
+  prompt?: string;
+}
+
+export type WidgetPart = CalendarWidgetPart | AddressPickerWidgetPart;
 
 export type AssistantPart = TextPart | ChipsPart | WidgetPart;
 

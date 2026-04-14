@@ -26,6 +26,11 @@ export interface Step {
    * acceptResponse が無い step は構造化応答を受け取らない（free text 専用）。
    */
   acceptResponse?: (value: unknown, slots: Slots) => SlotPatch;
+  /**
+   * LLM extractor にフォールバックする際に使う、このステップ固有の指示。
+   * 例: 「数量を『45L × 3袋/日』のような形式に正規化してください」。
+   */
+  llmHint?: string;
 }
 
 /** flow ごとの「次のstep計算関数」。null を返したら全項目埋まった (= done)。 */
