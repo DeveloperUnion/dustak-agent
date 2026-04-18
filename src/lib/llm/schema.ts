@@ -23,3 +23,31 @@ export const EXTRACTOR_JSON_SCHEMA = {
     },
   },
 } as const;
+
+// Flow 分類器の JSON Schema。
+// 自由発話の最初の1ターンで「個人スポット / 事業者スポット / 事業者定期」のどれに該当するかを判定する。
+// 判定不能なら flow=null + clarifyText で確認質問を返す。
+export const FLOW_CLASSIFIER_JSON_SCHEMA = {
+  name: 'DustalkFlowClassifier',
+  strict: false,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['flow'],
+    properties: {
+      flow: {
+        anyOf: [
+          { type: 'string', enum: ['household_spot', 'business_spot', 'business_recurring'] },
+          { type: 'null' },
+        ],
+        description:
+          '判定された flow。確信が持てなければ null を返す（chips fallback で確認する）。',
+      },
+      clarifyText: {
+        type: 'string',
+        description:
+          'flow=null のときに表示する短い確認質問（1文）。例: "個人のお客様ですか? 事業者のお客様ですか?"',
+      },
+    },
+  },
+} as const;

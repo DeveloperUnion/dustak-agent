@@ -13,6 +13,8 @@ type ChatResponseInput =
   | { kind: 'image'; detectedNames: string[] };
 
 interface ApiResult {
+  /** サーバーが確定/継続している flow。null=まだ未確定。 */
+  flow: FlowKind | null;
   slotPatch: SlotPatch;
   ackText?: string;
   assistantParts: AssistantPart[];
@@ -20,23 +22,17 @@ interface ApiResult {
 }
 
 interface ChatState {
+  /** 確定済みの flow。null=まだ自由発話で flow 推定中。 */
   flow: FlowKind | null;
+  /** flow 確定後の slots。flow=null のときも空 slots を持つ（型を簡単にするため）。 */
   slots: Slots;
   messages: ChatMessage[];
   loading: boolean;
   done: boolean;
   error: string | null;
 
-  /** チャット画面の初期化（フロー未選択状態）。 */
-  initSession: () => void;
-
-  /**
-   * チャット内のフロー選択チップから呼ばれる。
-   * - user メッセージを追加
-   * - flow を設定
-   * - state machine の最初の step を取りに行く
-   */
-  pickFlow: (flow: FlowKind, displayLabel: string) => Promise<void>;
+  /** チャット画面の初期化。初回挨拶を取りに行く。 */
+  initSession: () => Promise<void>;
 
   /** 自由入力テキストを送る */
   sendText: (text: string) => Promise<void>;
@@ -49,8 +45,8 @@ interface ChatState {
 }
 
 async function callApi(
-  flow: FlowKind,
-  slots: Slots,
+  flow: FlowKind | null,
+  slots: Slots | null,
   response: ChatResponseInput,
 ): Promise<ApiResult> {
   const res = await fetch('/api/chat', {
@@ -65,9 +61,11 @@ async function callApi(
   return (await res.json()) as ApiResult;
 }
 
+const INITIAL_SLOTS_PLACEHOLDER: Slots = emptySlots('household_spot');
+
 export const useChatSession = create<ChatState>((set, get) => ({
   flow: null,
-  slots: emptySlots('household_spot'),
+  slots: INITIAL_SLOTS_PLACEHOLDER,
   messages: [],
   loading: false,
   done: false,
@@ -76,41 +74,25 @@ export const useChatSession = create<ChatState>((set, get) => ({
   reset: () =>
     set({
       flow: null,
-      slots: emptySlots('household_spot'),
+      slots: INITIAL_SLOTS_PLACEHOLDER,
       messages: [],
       loading: false,
       done: false,
       error: null,
     }),
 
-  initSession: () =>
+  initSession: async () => {
     set({
       flow: null,
-      slots: emptySlots('household_spot'),
+      slots: INITIAL_SLOTS_PLACEHOLDER,
       messages: [],
-      loading: false,
-      done: false,
-      error: null,
-    }),
-
-  pickFlow: async (flow, displayLabel) => {
-    const userMsg: ChatMessage = {
-      role: 'user',
-      text: displayLabel,
-      createdAt: Date.now(),
-      meta: { source: 'chips' },
-    };
-    set({
-      flow,
-      slots: emptySlots(flow),
-      messages: [userMsg],
       loading: true,
-      error: null,
       done: false,
+      error: null,
     });
     try {
-      const r = await callApi(flow, emptySlots(flow), { kind: 'init' });
-      handleApiResult(set, get, r);
+      const r = await callApi(null, null, { kind: 'init' });
+      handleApiResult(set, get, r, null);
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
     }
@@ -118,7 +100,7 @@ export const useChatSession = create<ChatState>((set, get) => ({
 
   sendText: async (text) => {
     const { flow, slots, messages } = get();
-    if (!flow || !text.trim()) return;
+    if (!text.trim()) return;
     const userMsg: ChatMessage = {
       role: 'user',
       text,
@@ -127,8 +109,8 @@ export const useChatSession = create<ChatState>((set, get) => ({
     };
     set({ messages: [...messages, userMsg], loading: true, error: null });
     try {
-      const r = await callApi(flow, slots, { kind: 'text', text });
-      handleApiResult(set, get, r);
+      const r = await callApi(flow, flow ? slots : null, { kind: 'text', text });
+      handleApiResult(set, get, r, null);
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
     }
@@ -136,7 +118,6 @@ export const useChatSession = create<ChatState>((set, get) => ({
 
   sendStepResponse: async (stepId, value, displayLabel) => {
     const { flow, slots, messages } = get();
-    if (!flow) return;
     const userMsg: ChatMessage = {
       role: 'user',
       text: displayLabel,
@@ -145,8 +126,8 @@ export const useChatSession = create<ChatState>((set, get) => ({
     };
     set({ messages: [...messages, userMsg], loading: true, error: null });
     try {
-      const r = await callApi(flow, slots, { kind: 'step', stepId, value });
-      handleApiResult(set, get, r);
+      const r = await callApi(flow, flow ? slots : null, { kind: 'step', stepId, value });
+      handleApiResult(set, get, r, null);
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
     }
@@ -165,7 +146,7 @@ export const useChatSession = create<ChatState>((set, get) => ({
     set({ messages: [...messages, userMsg], loading: true, error: null });
     try {
       const r = await callApi(flow, slots, { kind: 'image', detectedNames });
-      handleApiResult(set, get, r);
+      handleApiResult(set, get, r, null);
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
     }
@@ -179,11 +160,24 @@ type SetFn = (
 ) => void;
 type GetFn = () => ChatState;
 
-function handleApiResult(set: SetFn, get: GetFn, r: ApiResult) {
-  const { slots, messages } = get();
-  const newSlots = applySlotPatch(slots, r.slotPatch);
+function handleApiResult(set: SetFn, get: GetFn, r: ApiResult, _unused: null) {
+  void _unused;
+  const { flow: prevFlow, slots: prevSlots, messages } = get();
+
+  // flow 確定の遷移: サーバーが新しい flow を返したら slots をその flow で初期化
+  let nextFlow = prevFlow;
+  let baseSlots = prevSlots;
+  if (r.flow !== null && prevFlow === null) {
+    nextFlow = r.flow;
+    baseSlots = emptySlots(r.flow);
+  } else if (r.flow !== null && prevFlow !== null && r.flow !== prevFlow) {
+    // 想定外: flow が変わった。安全側で base を作り直す。
+    nextFlow = r.flow;
+    baseSlots = emptySlots(r.flow);
+  }
+
+  const newSlots = applySlotPatch(baseSlots, r.slotPatch);
   const newMessages = [...messages];
-  // assistant 返答を組み立て: ackText（あれば）+ render された parts
   const parts: AssistantPart[] = [];
   if (r.ackText) parts.push({ kind: 'text', text: r.ackText });
   parts.push(...r.assistantParts);
@@ -191,6 +185,7 @@ function handleApiResult(set: SetFn, get: GetFn, r: ApiResult) {
     newMessages.push({ role: 'assistant', parts, createdAt: Date.now() });
   }
   set({
+    flow: nextFlow,
     slots: newSlots,
     messages: newMessages,
     loading: false,

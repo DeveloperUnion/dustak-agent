@@ -1,5 +1,7 @@
 // 複数のフローで使い回す step ファクトリ。
-// household.ts にすでに同等の関数があるが循環参照を避けるためここに集約する。
+//
+// 重要: 自由入力テキストは **常に LLM extractor 経由**で処理する方針なので、
+// 各 step は acceptText を持たない。チップ/ウィジェット応答だけ acceptResponse で受ける。
 
 import type { Step } from './types';
 import type { Slots, Item, ProviderChoice, PreferredDate, Frequency, AddressComponents } from '@/lib/slots/types';
@@ -32,14 +34,12 @@ export const STEP_address: Step = {
       },
     };
   },
-  // Composer からの直接テキスト入力も受付
-  acceptText: (text) => ({ location: { address: text } }),
 };
 
 export const STEP_storeName: Step = {
   id: 'location.storeName',
   render: () => [{ kind: 'text', text: '店舗名・事業所名を教えてください。' }],
-  acceptText: (text) => ({ location: { storeName: text } }),
+  llmHint: 'ユーザー入力を location.storeName に入れてください。',
 };
 
 export const STEP_buildingKind: Step = {
@@ -115,18 +115,16 @@ export const STEP_addFirstItem: Step = {
       text: '捨てたいものを教えてください。テキストで入力するか、📷ボタンから写真をアップロードできます。',
     },
   ],
-  acceptText: (text, slots) => ({
-    items: [{ id: nextItemId(slots.items), label: text }],
-  }),
+  llmHint: `ユーザー入力を items[] に追加してください。
+新規 item の id は "item-{連番}" 形式で、既存の最大連番 +1 を使ってください（現 items が空なら "item-1"）。
+1発話に複数品目があれば複数追加してかまいません。`,
 };
 
 export const STEP_addMoreItem: Step = {
   id: 'items.addMore',
   render: () => [{ kind: 'text', text: '次の品目を教えてください。' }],
-  acceptText: (text, slots): SlotPatch => ({
-    items: [{ id: nextItemId(slots.items), label: text }],
-    meta: { noMoreItems: undefined },
-  }),
+  llmHint: `ユーザー入力を items[] に追加してください。新規 id は既存の最大連番 +1。
+追加に成功したら meta.noMoreItems は patch に含めず undefined のままにしてください（次ターンで再度「他にもありますか?」を聞きます）。`,
 };
 
 export const STEP_moreItemsQuestion: Step = {
@@ -202,37 +200,39 @@ export function pickDatesStep(item: Item): Step {
 
 // ---------- 申込者情報 ----------
 
-export function freeTextStep(
-  id: string,
-  prompt: string,
-  apply: (text: string) => SlotPatch,
-): Step {
+/**
+ * 自由入力テキストで埋める step を作るヘルパ。
+ * 自由入力は LLM extractor 経由で処理されるので、ここでは render と llmHint のみ定義。
+ */
+export function freeTextStep(id: string, prompt: string, llmHint: string): Step {
   return {
     id,
     render: () => [{ kind: 'text', text: prompt }],
-    acceptText: (text) => apply(text),
+    llmHint,
   };
 }
 
 export const STEP_contactName = freeTextStep(
   'requester.contactName',
   'ご担当者のお名前を教えてください。',
-  (text) => ({ requester: { contactName: text } }),
+  'ユーザー入力を requester.contactName に入れてください。',
 );
 export const STEP_contactNameKana = freeTextStep(
   'requester.contactNameKana',
   'お名前のフリガナを教えてください。',
-  (text) => ({ requester: { contactNameKana: text } }),
+  'ユーザー入力を requester.contactNameKana に入れてください。カタカナ表記を尊重します。',
 );
 export const STEP_phone = freeTextStep(
   'requester.phone',
   '電話番号を教えてください。',
-  (text) => ({ requester: { phone: text } }),
+  `ユーザー入力を requester.phone に入れてください。
+形式は E.164 (例: "+819012345678") または日本国内の数字のみ (例: "09012345678") に正規化してください。
+ハイフン・括弧・全角数字は除去し、半角数字に揃えてください。`,
 );
 export const STEP_email = freeTextStep(
   'requester.email',
   'メールアドレスを教えてください。',
-  (text) => ({ requester: { email: text } }),
+  'ユーザー入力を requester.email に入れてください。前後の空白を除去し、小文字に正規化してください。',
 );
 
 // ---------- 事業者向け追加step ----------
@@ -261,23 +261,23 @@ export const STEP_businessForm: Step = {
 export const STEP_businessStoreName = freeTextStep(
   'requester.storeName',
   '屋号を教えてください。',
-  (text) => ({ requester: { storeName: text } }),
+  'ユーザー入力を requester.storeName に入れてください。',
 );
 export const STEP_businessName = freeTextStep(
   'requester.businessName',
   '事業者の正式名称を教えてください。',
-  (text) => ({ requester: { businessName: text } }),
+  'ユーザー入力を requester.businessName に入れてください。',
 );
 export const STEP_businessNameKana = freeTextStep(
   'requester.businessNameKana',
   '事業者名のフリガナを教えてください。',
-  (text) => ({ requester: { businessNameKana: text } }),
+  'ユーザー入力を requester.businessNameKana に入れてください。カタカナ表記を尊重します。',
 );
 
 export const STEP_occupation = freeTextStep(
   'occupation',
   'どんな業種・業態ですか? (例: ラーメン屋、建設業)',
-  (text) => ({ occupation: text }),
+  'ユーザー入力を occupation に入れてください。業態の自由表現を尊重します。',
 );
 
 // ---------- 定期回収用: 品目ごとの 数量・頻度・開始日 ----------
@@ -302,7 +302,6 @@ export function quantityStep(item: Item): Step {
         text: `「${item.label}」のおおよその数量を教えてください。(例: 45L × 3袋/日)`,
       },
     ],
-    // acceptText は定義しない → LLM extractor にフォールバックして正規化する
     llmHint: `現在聞いているのは品目「${item.label}」のおおよその数量です。
 items[].id = "${item.id}" の estimatedQuantity を埋めてください。
 ユーザー入力を以下のような形式に正規化してください:
