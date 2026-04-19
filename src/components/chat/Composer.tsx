@@ -24,10 +24,11 @@ export function Composer({ onSendText, onSendImageDetection, disabled }: Props) 
   };
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submit();
-    }
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    // IME 変換確定の Enter は送信にしない（Safari/Chrome/Firefox 共通で isComposing=true、古いブラウザは keyCode=229）
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    submit();
   };
 
   const openImagePicker = () => {
