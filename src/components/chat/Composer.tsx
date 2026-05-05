@@ -8,7 +8,7 @@ interface Props {
   disabled?: boolean;
 }
 
-const IMAGE_PICKER_ORIGIN = 'https://identify-garbage.onrender.com';
+const IMAGE_PICKER_ORIGIN = 'https://jvxqvfx3pv.ap-northeast-1.awsapprunner.com';
 
 export function Composer({ onSendText, onSendImageDetection, disabled }: Props) {
   const [value, setValue] = useState('');
