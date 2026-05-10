@@ -31,13 +31,6 @@ export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse,
     return -1;
   })();
 
-  const lastUserIdx = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') return i;
-    }
-    return -1;
-  })();
-
   return (
     <div
       ref={scrollRef}
@@ -70,7 +63,6 @@ export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse,
         const showTail = !prev || prev.role !== m.role;
 
         if (m.role === 'user') {
-          const showUndo = i === lastUserIdx && canUndo && !loading;
           return (
             <div key={i}>
               <TextBubble
@@ -79,22 +71,11 @@ export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse,
                 createdAt={m.createdAt}
                 showTail={showTail}
               />
-              {showUndo && (
-                <div className="flex justify-end px-5 mt-1">
-                  <button
-                    type="button"
-                    onClick={onUndo}
-                    className="text-[11px] tracking-[0.18em] uppercase text-[var(--ink-mute)] hover:text-[var(--brand)] transition-colors"
-                    title="直前の回答を取り消して同じ質問に戻る"
-                  >
-                    ↶ やり直す
-                  </button>
-                </div>
-              )}
             </div>
           );
         }
         const isLast = i === lastAssistantIdx;
+        const showUndo = isLast && canUndo && !loading;
         return (
           <div key={i}>
             {m.parts.map((p, j) => {
@@ -163,6 +144,19 @@ export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse,
               }
               return null;
             })}
+            {showUndo && (
+              <div className="flex justify-start px-5 mt-2 ml-1.5">
+                <button
+                  type="button"
+                  onClick={onUndo}
+                  title="直前の回答を取り消して同じ質問に戻る"
+                  className="inline-flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)] px-3 py-1.5 rounded-full border border-[var(--line)] bg-[var(--paper)]/60 hover:bg-[var(--paper)] hover:text-[var(--brand)] hover:border-[var(--brand)]/40 transition-colors"
+                >
+                  <span aria-hidden>↶</span>
+                  <span>直前の答えを修正</span>
+                </button>
+              </div>
+            )}
           </div>
         );
       })}

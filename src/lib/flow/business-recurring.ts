@@ -44,9 +44,9 @@ export const businessRecurringNextStep: NextStepFn = (slots) => {
   if (!loc.parking) return STEP_parking;
   if (!loc.elevator) return STEP_elevator;
 
-  if (slots.items.length === 0) return addFirstItemStep(slots.flow, slots);
+  if (slots.items.length === 0) return addFirstItemStep();
   if (slots.meta.noMoreItems === undefined) return STEP_moreItemsQuestion;
-  if (slots.meta.noMoreItems === false) return addMoreItemStep(slots.flow, slots);
+  if (slots.meta.noMoreItems === false) return addMoreItemStep();
 
   // 品目ごとに 数量・頻度・開始日 を埋める
   for (const item of slots.items) {
