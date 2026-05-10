@@ -2,7 +2,18 @@
 
 export type FlowKind = 'household_spot' | 'business_spot' | 'business_recurring';
 
-export type BuildingKind = '戸建て' | 'マンション・アパート' | '倉庫' | 'その他';
+export type BuildingKind =
+  // household 向け
+  | '戸建て'
+  | 'マンション・アパート'
+  | '倉庫'
+  // business 向け
+  | '路面店・独立店舗'
+  | 'ビル内テナント・事務所'
+  | '商業施設内'
+  | '工場・倉庫'
+  // 共通
+  | 'その他';
 export type YesNo = 'あり' | 'なし';
 export type DischargeMode = '自分で排出' | '排出を希望';
 
@@ -26,6 +37,8 @@ export interface LocationSlot {
   addressComponents?: AddressComponents;
   storeName?: string;
   buildingKind?: BuildingKind;
+  /** 回収品の置き場の階。"1階" "2階" "3階" "4階以上" もしくは自由表現（"地下1階" など）。 */
+  floor?: string;
   parking?: YesNo;
   elevator?: YesNo;
   dischargeMode?: DischargeMode;
@@ -91,8 +104,14 @@ export interface RequesterSlot {
 export interface SlotsMeta {
   /** 「他に品目はありますか?」で「これで全部です」を選んだ */
   noMoreItems?: boolean;
-  /** ユーザーが確認したか（事業者向け産廃分類など） */
+  /** ユーザーが品目ごとの産廃20分類を確認したか（事業者向け） */
   confirmedCategories?: boolean;
+  /** 事業者フロー先頭のマニフェスト交付義務に関する説明をユーザーが確認したか */
+  acknowledgedManifest?: boolean;
+  /** 1品目目の依頼先選択後、「他の品目も同じにする?」を1度問い合わせ済みか（per-item モードに固定するためのフラグ）*/
+  bulkProviderAsked?: boolean;
+  /** 1品目目の希望回収日時選択後、「他の品目も同じ日時にする?」を1度問い合わせ済みか */
+  bulkDateAsked?: boolean;
 }
 
 export interface Slots {

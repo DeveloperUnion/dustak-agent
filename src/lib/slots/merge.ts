@@ -36,7 +36,12 @@ export function applySlotPatch(slots: Slots, patch: SlotPatch | undefined | null
       if (idx >= 0) {
         next.items[idx] = { ...next.items[idx], ...p };
       } else {
-        next.items.push({ label: '', ...p });
+        // 新規追加は label が具体的に埋まっている場合のみ。
+        // LLM が誤って総称ワードのみの幽霊 item ({id:"item-1"} 等) を patch しても無視する。
+        // これにより state machine の STEP_addFirstItem が正しく発火する。
+        const label = typeof p.label === 'string' ? p.label.trim() : '';
+        if (label.length === 0) continue;
+        next.items.push({ ...p, label });
       }
     }
   }

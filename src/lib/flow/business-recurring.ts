@@ -7,13 +7,15 @@
 
 import type { NextStepFn } from './types';
 import {
+  STEP_manifestNotice,
   STEP_address,
   STEP_storeName,
-  STEP_buildingKind,
+  STEP_buildingKindBusiness,
+  STEP_floor,
   STEP_parking,
   STEP_elevator,
-  STEP_addFirstItem,
-  STEP_addMoreItem,
+  addFirstItemStep,
+  addMoreItemStep,
   STEP_moreItemsQuestion,
   STEP_occupation,
   STEP_businessForm,
@@ -30,18 +32,21 @@ import {
 } from './shared';
 
 export const businessRecurringNextStep: NextStepFn = (slots) => {
+  // 事業者フローの一番最初にマニフェスト交付義務の説明を提示する
+  if (!slots.meta.acknowledgedManifest) return STEP_manifestNotice;
   if (!slots.occupation) return STEP_occupation;
 
   const loc = slots.location;
   if (!loc.address) return STEP_address;
   if (!loc.storeName) return STEP_storeName;
-  if (!loc.buildingKind) return STEP_buildingKind;
+  if (!loc.buildingKind) return STEP_buildingKindBusiness;
+  if (!loc.floor) return STEP_floor;
   if (!loc.parking) return STEP_parking;
   if (!loc.elevator) return STEP_elevator;
 
-  if (slots.items.length === 0) return STEP_addFirstItem;
+  if (slots.items.length === 0) return addFirstItemStep(slots.flow, slots);
   if (slots.meta.noMoreItems === undefined) return STEP_moreItemsQuestion;
-  if (slots.meta.noMoreItems === false) return STEP_addMoreItem;
+  if (slots.meta.noMoreItems === false) return addMoreItemStep(slots.flow, slots);
 
   // 品目ごとに 数量・頻度・開始日 を埋める
   for (const item of slots.items) {

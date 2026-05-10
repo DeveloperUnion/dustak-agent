@@ -4,14 +4,37 @@
 // 各 step は acceptText を持たない。チップ/ウィジェット応答だけ acceptResponse で受ける。
 
 import type { Step } from './types';
-import type { Slots, Item, ProviderChoice, PreferredDate, Frequency, AddressComponents } from '@/lib/slots/types';
+import type { Slots, Item, ProviderChoice, PreferredDate, Frequency, AddressComponents, FlowKind } from '@/lib/slots/types';
 import type { SlotPatch } from '@/lib/slots/merge';
+import type { AssistantPart, ChipsPart } from '@/types/messages';
 
 export function nextItemId(items: Item[]): string {
   let n = items.length + 1;
   while (items.some((i) => i.id === `item-${n}`)) n++;
   return `item-${n}`;
 }
+
+// ---------- 事業者フロー先頭: マニフェスト説明 ----------
+
+// TODO: 本番コピーに差し替え。マニフェスト（産業廃棄物管理票）の制度説明。
+const MANIFEST_NOTICE_TEXT =
+  '【ご確認ください】\n' +
+  '事業者から排出されるゴミのうち、産業廃棄物に該当するものは、法律により「マニフェスト（産業廃棄物管理票）」の交付が義務付けられています。\n' +
+  '弊社では一般廃棄物・産業廃棄物いずれも適切に処理し、必要に応じてマニフェスト発行に対応いたします。\n' +
+  '内容をご確認のうえ、申し込みにお進みください。';
+
+export const STEP_manifestNotice: Step = {
+  id: 'meta.manifestNotice',
+  render: () => [
+    { kind: 'text', text: MANIFEST_NOTICE_TEXT },
+    {
+      kind: 'chips',
+      stepId: 'meta.manifestNotice',
+      options: [{ label: '確認しました', value: 'ack' }],
+    },
+  ],
+  acceptResponse: () => ({ meta: { acknowledgedManifest: true } }),
+};
 
 // ---------- 場所 ----------
 
@@ -42,6 +65,7 @@ export const STEP_storeName: Step = {
   llmHint: 'ユーザー入力を location.storeName に入れてください。',
 };
 
+// 個人スポット向け（住宅系の選択肢）
 export const STEP_buildingKind: Step = {
   id: 'location.buildingKind',
   render: () => [
@@ -53,6 +77,29 @@ export const STEP_buildingKind: Step = {
         { label: '戸建て', value: '戸建て' },
         { label: 'マンション・アパート', value: 'マンション・アパート' },
         { label: '倉庫', value: '倉庫' },
+        { label: 'その他', value: 'その他' },
+      ],
+      allowFreeText: true,
+    },
+  ],
+  acceptResponse: (value) => ({
+    location: { buildingKind: value as Slots['location']['buildingKind'] },
+  }),
+};
+
+// 事業者向け（業務用建物の選択肢）
+export const STEP_buildingKindBusiness: Step = {
+  id: 'location.buildingKind',
+  render: () => [
+    {
+      kind: 'chips',
+      stepId: 'location.buildingKind',
+      prompt: '建物の種類は?',
+      options: [
+        { label: '路面店・独立店舗', value: '路面店・独立店舗' },
+        { label: 'ビル内テナント・事務所', value: 'ビル内テナント・事務所' },
+        { label: '商業施設内', value: '商業施設内' },
+        { label: '工場・倉庫', value: '工場・倉庫' },
         { label: 'その他', value: 'その他' },
       ],
       allowFreeText: true,
@@ -84,6 +131,27 @@ function yesNoStep(id: string, prompt: string, field: 'parking' | 'elevator'): S
 export const STEP_parking = yesNoStep('location.parking', '駐車スペースはありますか?', 'parking');
 export const STEP_elevator = yesNoStep('location.elevator', 'エレベーターはありますか?', 'elevator');
 
+export const STEP_floor: Step = {
+  id: 'location.floor',
+  render: () => [
+    {
+      kind: 'chips',
+      stepId: 'location.floor',
+      prompt: '回収する品物は何階にありますか?',
+      options: [
+        { label: '1階', value: '1階' },
+        { label: '2階', value: '2階' },
+        { label: '3階', value: '3階' },
+        { label: '4階以上', value: '4階以上' },
+      ],
+      allowFreeText: true,
+    },
+  ],
+  acceptResponse: (value) => ({
+    location: { floor: value as string },
+  }),
+};
+
 export const STEP_dischargeMode: Step = {
   id: 'location.dischargeMode',
   render: () => [
@@ -107,25 +175,113 @@ export const STEP_dischargeMode: Step = {
 
 // ---------- 品目登録ループ ----------
 
-export const STEP_addFirstItem: Step = {
-  id: 'items.addFirst',
-  render: () => [
-    {
-      kind: 'text',
-      text: '捨てたいものを教えてください。テキストで入力するか、📷ボタンから写真をアップロードできます。',
-    },
-  ],
-  llmHint: `ユーザー入力を items[] に追加してください。
-新規 item の id は "item-{連番}" 形式で、既存の最大連番 +1 を使ってください（現 items が空なら "item-1"）。
-1発話に複数品目があれば複数追加してかまいません。`,
-};
+// flow ごとの「よくある品目」chips。少数追加なら選択制で速く済む。
+const HOUSEHOLD_COMMON_ITEMS = [
+  'ベッド',
+  'ソファ',
+  '椅子',
+  'テーブル',
+  '洗濯機',
+  '冷蔵庫',
+  'テレビ',
+  '電子レンジ',
+  '布団',
+  '自転車',
+  '本棚',
+  '衣装ケース',
+];
 
-export const STEP_addMoreItem: Step = {
-  id: 'items.addMore',
-  render: () => [{ kind: 'text', text: '次の品目を教えてください。' }],
-  llmHint: `ユーザー入力を items[] に追加してください。新規 id は既存の最大連番 +1。
-追加に成功したら meta.noMoreItems は patch に含めず undefined のままにしてください（次ターンで再度「他にもありますか?」を聞きます）。`,
-};
+const BUSINESS_COMMON_ITEMS = [
+  '事務机',
+  '事務椅子',
+  'ロッカー',
+  'キャビネット',
+  '冷蔵庫',
+  '電子レンジ',
+  'パーティション',
+  '什器',
+  '段ボール',
+  '生ゴミ',
+  '紙くず',
+  'プラスチック',
+];
+
+function commonItemsForFlow(flow: FlowKind): string[] {
+  return flow === 'household_spot' ? HOUSEHOLD_COMMON_ITEMS : BUSINESS_COMMON_ITEMS;
+}
+
+/** 既存 items に含まれない common items の chips part を返す。残ゼロなら null。 */
+function chipsForItemAdd(flow: FlowKind, slots: Slots, stepId: string): ChipsPart | null {
+  const all = commonItemsForFlow(flow);
+  const existing = new Set(
+    slots.items
+      .map((i) => i.label?.trim().toLowerCase())
+      .filter((l): l is string => !!l),
+  );
+  const filtered = all.filter((o) => !existing.has(o.toLowerCase()));
+  if (filtered.length === 0) return null;
+  return {
+    kind: 'chips',
+    stepId,
+    options: filtered.map((label) => ({ label, value: label })),
+    allowFreeText: true,
+  };
+}
+
+function addItemAcceptResponse(value: unknown, slots: Slots): SlotPatch {
+  const label = String(value).trim();
+  if (!label) return {};
+  const id = nextItemId(slots.items);
+  return { items: [{ id, label }] };
+}
+
+const ADD_ITEM_LLM_HINT_FIRST = `ユーザー入力を items[] に追加してください。
+新規 item の id は "item-{連番}" 形式で、既存の最大連番 +1 を使ってください（現 items が空なら "item-1"）。
+1発話に複数品目があれば複数追加してかまいません。`;
+
+const ADD_ITEM_LLM_HINT_MORE = `ユーザー入力を items[] に追加してください。新規 id は既存の最大連番 +1。
+追加に成功したら meta.noMoreItems は patch に含めず undefined のままにしてください（次ターンで再度「他にもありますか?」を聞きます）。`;
+
+export function addFirstItemStep(flow: FlowKind, slots: Slots): Step {
+  const chip = chipsForItemAdd(flow, slots, 'items.addFirst');
+  return {
+    id: 'items.addFirst',
+    render: () => {
+      const parts: AssistantPart[] = [
+        {
+          kind: 'text',
+          text:
+            '捨てたいものを教えてください。下のボタンから選ぶか、テキスト入力か📷ボタンから写真もアップロードできます。',
+        },
+      ];
+      if (chip) parts.push(chip);
+      return parts;
+    },
+    acceptResponse: addItemAcceptResponse,
+    llmHint: ADD_ITEM_LLM_HINT_FIRST,
+  };
+}
+
+export function addMoreItemStep(flow: FlowKind, slots: Slots): Step {
+  const chip = chipsForItemAdd(flow, slots, 'items.addMore');
+  return {
+    id: 'items.addMore',
+    render: () => {
+      const parts: AssistantPart[] = [
+        {
+          kind: 'text',
+          text: chip
+            ? '次の品目を教えてください。下のボタンから選ぶか、テキストでも入力できます。'
+            : '次の品目を教えてください。',
+        },
+      ];
+      if (chip) parts.push(chip);
+      return parts;
+    },
+    acceptResponse: addItemAcceptResponse,
+    llmHint: ADD_ITEM_LLM_HINT_MORE,
+  };
+}
 
 export const STEP_moreItemsQuestion: Step = {
   id: 'items.moreQuestion',
@@ -154,10 +310,48 @@ const PROVIDER_LABELS: ProviderChoice[] = [
   '民間事業者に依頼',
 ];
 
-export function pickProviderStep(item: Item): Step {
+/** 依頼先選択用の品目別サマリー文を返す（複数品目のときのみ非空）。 */
+function providerSummaryText(slots: Slots, currentItemId: string): string | null {
+  if (slots.items.length <= 1) return null;
+  const lines = slots.items.map((i, idx) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === i.id);
+    const status = a?.provider
+      ? `→ ${a.provider}`
+      : i.id === currentItemId
+        ? '← 選択中'
+        : '(未選択)';
+    return `${idx + 1}. ${i.label} ${status}`;
+  });
+  return `【品目別の依頼先】\n${lines.join('\n')}`;
+}
+
+/** 希望回収日時用の品目別サマリー文を返す（民間事業者依頼の品目が複数あるときのみ非空）。 */
+function dateSummaryText(slots: Slots, currentItemId: string): string | null {
+  const itemsNeedingDates = slots.items.filter((i) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === i.id);
+    return a?.provider === '民間事業者に依頼';
+  });
+  if (itemsNeedingDates.length <= 1) return null;
+  const lines = itemsNeedingDates.map((i, idx) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === i.id);
+    const dates = a?.preferredDates;
+    const status =
+      dates && dates.length > 0
+        ? `→ ${dates.map((d) => `${d.date} ${d.timeSlot}`).join(' / ')}`
+        : i.id === currentItemId
+          ? '← 選択中'
+          : '(未選択)';
+    return `${idx + 1}. ${i.label} ${status}`;
+  });
+  return `【品目別の希望回収日時】\n${lines.join('\n')}`;
+}
+
+export function pickProviderStep(item: Item, slots: Slots): Step {
+  const summary = providerSummaryText(slots, item.id);
   return {
     id: `provider.pick.${item.id}`,
     render: () => [
+      ...(summary ? [{ kind: 'text' as const, text: summary }] : []),
       {
         kind: 'chips',
         stepId: `provider.pick.${item.id}`,
@@ -178,10 +372,12 @@ export function pickProviderStep(item: Item): Step {
   };
 }
 
-export function pickDatesStep(item: Item): Step {
+export function pickDatesStep(item: Item, slots: Slots): Step {
+  const summary = dateSummaryText(slots, item.id);
   return {
     id: `provider.dates.${item.id}`,
     render: () => [
+      ...(summary ? [{ kind: 'text' as const, text: summary }] : []),
       {
         kind: 'widget',
         widget: 'calendar',
@@ -195,6 +391,92 @@ export function pickDatesStep(item: Item): Step {
         { itemId: item.id, preferredDates: value as PreferredDate[] },
       ],
     }),
+  };
+}
+
+/**
+ * 1品目目の依頼先選択後、残り品目に同じ依頼先を一括適用するか確認する step。
+ * - "unify": 残り全品目に同じ provider を適用 + meta.bulkProviderAsked=true
+ * - "per_item": meta.bulkProviderAsked=true のみ（後続で1品目ずつ聞く）
+ */
+export function bulkProviderConfirmStep(slots: Slots): Step {
+  const filledProvider =
+    slots.providerAssignments.find((a) => a.provider)?.provider ?? null;
+  const itemsWithoutProvider = slots.items.filter((item) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
+    return !a?.provider;
+  });
+  const remainingCount = itemsWithoutProvider.length;
+  return {
+    id: 'provider.bulkConfirm',
+    render: () => [
+      {
+        kind: 'chips',
+        stepId: 'provider.bulkConfirm',
+        prompt: `他の${remainingCount}品目も同じ「${filledProvider ?? ''}」にしますか?`,
+        options: [
+          { label: `全部「${filledProvider ?? ''}」に統一`, value: 'unify' },
+          { label: '品目ごとに個別に選ぶ', value: 'per_item' },
+        ],
+      },
+    ],
+    acceptResponse: (value): SlotPatch => {
+      if (value === 'unify' && filledProvider) {
+        return {
+          providerAssignments: itemsWithoutProvider.map((i) => ({
+            itemId: i.id,
+            provider: filledProvider,
+          })),
+          meta: { bulkProviderAsked: true },
+        };
+      }
+      return { meta: { bulkProviderAsked: true } };
+    },
+  };
+}
+
+/**
+ * 1品目目の希望回収日時選択後、残り（民間事業者依頼の）品目に同じ日時を一括適用するか確認する step。
+ */
+export function bulkDateConfirmStep(slots: Slots): Step {
+  const filledDates = slots.providerAssignments.find(
+    (a) => a.preferredDates && a.preferredDates.length > 0,
+  )?.preferredDates;
+  const itemsNeedingDates = slots.items.filter((item) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
+    return a?.provider === '民間事業者に依頼';
+  });
+  const itemsWithoutDates = itemsNeedingDates.filter((item) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
+    return !a?.preferredDates || a.preferredDates.length === 0;
+  });
+  const remainingCount = itemsWithoutDates.length;
+  const datesText = filledDates?.map((d) => `${d.date} ${d.timeSlot}`).join(' / ') ?? '';
+  return {
+    id: 'provider.bulkDateConfirm',
+    render: () => [
+      {
+        kind: 'chips',
+        stepId: 'provider.bulkDateConfirm',
+        prompt: `他の${remainingCount}品目も同じ希望日時 (${datesText}) にしますか?`,
+        options: [
+          { label: '全部同じ日時で統一', value: 'unify' },
+          { label: '品目ごとに個別に選ぶ', value: 'per_item' },
+        ],
+      },
+    ],
+    acceptResponse: (value): SlotPatch => {
+      if (value === 'unify' && filledDates) {
+        return {
+          providerAssignments: itemsWithoutDates.map((i) => ({
+            itemId: i.id,
+            preferredDates: filledDates,
+          })),
+          meta: { bulkDateAsked: true },
+        };
+      }
+      return { meta: { bulkDateAsked: true } };
+    },
   };
 }
 
@@ -293,21 +575,53 @@ const FREQUENCY_OPTIONS: Frequency[] = [
   'その他',
 ];
 
+/** 品目 label に応じて適切な数量入力例を返す。 */
+function quantityExamplesFor(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes('ダンボール') || l.includes('段ボール')) {
+    return '例: 「10枚/日」 / 「5束/週」 / 「20kg/週」';
+  }
+  if (l.includes('生ゴミ') || l.includes('生ごみ') || l.includes('食品残渣') || l.includes('食用油')) {
+    return '例: 「45L × 3袋/日」 / 「20L × 1缶/週」';
+  }
+  if (l.includes('紙') || l.includes('書類') || l.includes('シュレッダー')) {
+    return '例: 「5kg/日」 / 「45L × 1袋/日」 / 「ダンボール3箱/週」';
+  }
+  if (l.includes('プラ') || l.includes('ペットボトル') || l.includes('ビン') || l.includes('カン') || l.includes('缶')) {
+    return '例: 「45L × 2袋/日」 / 「10kg/週」';
+  }
+  if (
+    l.includes('机') || l.includes('椅子') || l.includes('ロッカー') ||
+    l.includes('キャビネット') || l.includes('什器') || l.includes('棚') ||
+    l.includes('ベッド') || l.includes('ソファ') || l.includes('テーブル') ||
+    l.includes('冷蔵庫') || l.includes('洗濯機') || l.includes('テレビ') ||
+    l.includes('電子レンジ') || l.includes('自転車') || l.includes('布団') ||
+    l.includes('パーティション')
+  ) {
+    return '例: 「1台」 / 「3点」 / 「高さ180cm × 幅90cm 1点」';
+  }
+  // デフォルト: 複数フォーマット併記
+  return '例: 「45L × 3袋/日」 / 「10枚/日」 / 「5kg/週」 / 「1台」';
+}
+
 export function quantityStep(item: Item): Step {
+  const examples = quantityExamplesFor(item.label);
   return {
     id: `item.quantity.${item.id}`,
     render: () => [
       {
         kind: 'text',
-        text: `「${item.label}」のおおよその数量を教えてください。(例: 45L × 3袋/日)`,
+        text: `「${item.label}」のおおよその数量を教えてください。\n${examples}`,
       },
     ],
     llmHint: `現在聞いているのは品目「${item.label}」のおおよその数量です。
 items[].id = "${item.id}" の estimatedQuantity を埋めてください。
 ユーザー入力を以下のような形式に正規化してください:
-- ゴミ袋類: "45L × 3袋/日" "45L × 10袋/週"
-- 家具・家電類: "1台" "高さ180cm × 幅90cm 1点"
-- 重量で表現されている場合: "10kg/週"
+- ゴミ袋類（生ゴミ、プラ、ペットボトル等）: "45L × 3袋/日" "45L × 10袋/週"
+- 紙・段ボール類: "10枚/日" "5束/週" "ダンボール3箱/週"
+- 家具・家電・什器類: "1台" "3点" "高さ180cm × 幅90cm 1点"
+- 重量で表現されている場合: "10kg/週" "5kg/日"
+- 容量×個数: "20L × 1缶/週" "18L × 2缶/月"
 ユーザーの表現が曖昧（例: 「3袋くらい」「たくさん」「だいたい2つ」）でも、そのまま estimatedQuantity に入れてよい（無理に数値化しない）。
 単位や頻度が不明な場合は推測せず、ユーザーの表現を尊重する。
 
@@ -316,8 +630,10 @@ items[].id = "${item.id}" の estimatedQuantity を埋めてください。
 - estimatedQuantity は **埋めない**（patch.items を空にする）
 - 予測ヒント（PredictCostModel）があれば、ackText でそれを提案する
   - 例: "ラーメン屋さんですと 45L × 3袋/日 くらいが一般的ですが、近いですか?"
-- 予測ヒントが無ければ、ackText で簡単な目安の聞き方に言い換える
-  - 例: "ゴミ袋の大きさと1日あたりの個数で教えてください（例: 45L × 2袋/日）"`,
+- 予測ヒントが無ければ、ackText で品目に合った例を提示する
+  - ゴミ袋類なら「ゴミ袋の大きさと1日あたりの個数で教えてください（例: 45L × 2袋/日）」
+  - 段ボール・紙類なら「枚数や束数、または重量で教えてください（例: 10枚/日、5kg/週）」
+  - 什器・家電なら「台数や寸法で教えてください（例: 1台、180cm × 90cm 1点）」`,
   };
 }
 
