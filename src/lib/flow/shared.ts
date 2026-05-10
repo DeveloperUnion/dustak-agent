@@ -7,12 +7,6 @@ import type { Step } from './types';
 import type { Slots, Item, ProviderChoice, PreferredDate, Frequency, AddressComponents } from '@/lib/slots/types';
 import type { SlotPatch } from '@/lib/slots/merge';
 
-export function nextItemId(items: Item[]): string {
-  let n = items.length + 1;
-  while (items.some((i) => i.id === `item-${n}`)) n++;
-  return `item-${n}`;
-}
-
 // ---------- 事業者フロー先頭: マニフェスト説明 ----------
 
 // TODO: 本番コピーに差し替え。マニフェスト（産業廃棄物管理票）の制度説明。
@@ -174,30 +168,37 @@ export const STEP_dischargeMode: Step = {
 
 // ---------- 品目登録ループ ----------
 
-function addItemAcceptResponse(value: unknown, slots: Slots): SlotPatch {
-  const label = String(value).trim();
-  if (!label) return {};
-  const id = nextItemId(slots.items);
-  return { items: [{ id, label }] };
-}
+const NO_MORE_ITEMS_VALUE = '__no_more_items__';
+const IMAGE_ACTION_VALUE = '__action_open_image_picker__';
 
 const ADD_ITEM_LLM_HINT_FIRST = `ユーザー入力を items[] に追加してください。
 新規 item の id は "item-{連番}" 形式で、既存の最大連番 +1 を使ってください（現 items が空なら "item-1"）。
 1発話に複数品目があれば複数追加してかまいません。`;
 
 const ADD_ITEM_LLM_HINT_MORE = `ユーザー入力を items[] に追加してください。新規 id は既存の最大連番 +1。
-追加に成功したら meta.noMoreItems は patch に含めず undefined のままにしてください（次ターンで再度「他にもありますか?」を聞きます）。`;
+追加に成功したら meta.noMoreItems は patch に含めず undefined のままにしてください（ユーザーが「品目を確定する」チップを押すまで items 追加を続けます）。`;
 
 export function addFirstItemStep(): Step {
   return {
     id: 'items.addFirst',
     render: () => [
+      { kind: 'text', text: '捨てたいものを教えてください。' },
       {
-        kind: 'text',
-        text: '捨てたいものを教えてください。テキストで入力するか、📷ボタンから写真をアップロードできます。',
+        kind: 'chips',
+        stepId: 'items.addFirst',
+        options: [
+          {
+            label: '📷 画像から選択',
+            value: IMAGE_ACTION_VALUE,
+            action: 'open_image_picker',
+          },
+        ],
+        allowFreeText: true,
       },
     ],
-    acceptResponse: addItemAcceptResponse,
+    // action チップはクライアント側で intercept されサーバーに来ない。
+    // 自由入力は extractor 経由で処理されるため、ここでは noop。
+    acceptResponse: () => ({}),
     llmHint: ADD_ITEM_LLM_HINT_FIRST,
   };
 }
@@ -205,28 +206,27 @@ export function addFirstItemStep(): Step {
 export function addMoreItemStep(): Step {
   return {
     id: 'items.addMore',
-    render: () => [{ kind: 'text', text: '次の品目を教えてください。' }],
-    acceptResponse: addItemAcceptResponse,
+    render: () => [
+      { kind: 'text', text: '次の品目を教えてください。' },
+      {
+        kind: 'chips',
+        stepId: 'items.addMore',
+        options: [
+          {
+            label: '📷 画像から選択',
+            value: IMAGE_ACTION_VALUE,
+            action: 'open_image_picker',
+          },
+          { label: '品目を確定する', value: NO_MORE_ITEMS_VALUE },
+        ],
+        allowFreeText: true,
+      },
+    ],
+    acceptResponse: (value): SlotPatch =>
+      value === NO_MORE_ITEMS_VALUE ? { meta: { noMoreItems: true } } : {},
     llmHint: ADD_ITEM_LLM_HINT_MORE,
   };
 }
-
-export const STEP_moreItemsQuestion: Step = {
-  id: 'items.moreQuestion',
-  render: () => [
-    {
-      kind: 'chips',
-      stepId: 'items.moreQuestion',
-      prompt: '他にも捨てたいものはありますか?',
-      options: [
-        { label: '他にもあります', value: 'more' },
-        { label: 'これで全部です', value: 'done' },
-      ],
-    },
-  ],
-  acceptResponse: (value): SlotPatch =>
-    value === 'done' ? { meta: { noMoreItems: true } } : { meta: { noMoreItems: false } },
-};
 
 // ---------- 依頼先選択（個人/事業者スポット用） ----------
 

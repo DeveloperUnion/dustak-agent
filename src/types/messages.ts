@@ -6,11 +6,15 @@ export interface TextPart {
   text: string;
 }
 
+export type ChipAction = 'open_image_picker';
+
 export interface ChipOption {
   label: string;
   value: string;
   disabled?: boolean;
   disabledReason?: string;
+  /** 指定時は onPick ではなくクライアント側ハンドラ（onAction）を発火する */
+  action?: ChipAction;
 }
 
 export interface ChipsPart {

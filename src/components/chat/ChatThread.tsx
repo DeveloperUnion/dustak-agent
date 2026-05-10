@@ -15,9 +15,10 @@ interface Props {
   onUndo: () => void;
   onStepResponse: (stepId: string, value: unknown, displayLabel: string) => void;
   onFreeText: (text: string) => void;
+  onOpenImagePicker: () => void;
 }
 
-export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse, onFreeText }: Props) {
+export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse, onFreeText, onOpenImagePicker }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,6 +102,9 @@ export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse,
                     showTail={partShowTail}
                     onPick={(value, label) => {
                       if (p.stepId) onStepResponse(p.stepId, value, label);
+                    }}
+                    onAction={(action) => {
+                      if (action === 'open_image_picker') onOpenImagePicker();
                     }}
                     onFreeText={p.allowFreeText ? onFreeText : undefined}
                   />
