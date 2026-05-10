@@ -13,7 +13,6 @@ import {
   STEP_dischargeMode,
   addFirstItemStep,
   addMoreItemStep,
-  STEP_moreItemsQuestion,
   STEP_contactName,
   STEP_contactNameKana,
   STEP_phone,
@@ -34,8 +33,7 @@ export const householdNextStep: NextStepFn = (slots) => {
   if (!loc.dischargeMode) return STEP_dischargeMode;
 
   if (slots.items.length === 0) return addFirstItemStep();
-  if (slots.meta.noMoreItems === undefined) return STEP_moreItemsQuestion;
-  if (slots.meta.noMoreItems === false) return addMoreItemStep();
+  if (slots.meta.noMoreItems !== true) return addMoreItemStep();
 
   // ----- 依頼先 phase -----
   const providersSet = slots.providerAssignments.filter((a) => a.provider).length;

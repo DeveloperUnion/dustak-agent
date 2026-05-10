@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useChatSession } from '@/lib/store/useChatSession';
 import { ChatThread } from '@/components/chat/ChatThread';
 import { ChatHeader } from '@/components/chat/ChatHeader';
@@ -38,6 +38,20 @@ export default function ChatPage() {
       initSession();
     }
   }, [flow, messages.length, loading, initSession]);
+
+  // 写真ピッカー（iframe モーダル）の state は ChatThread のチップと Composer のカメラボタン両方から開けるようリフトアップ
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [pickerLoaded, setPickerLoaded] = useState(false);
+  const openImagePicker = useCallback(() => {
+    if (loading) return;
+    setPickerError(null);
+    setPickerLoaded(false);
+    setPickerOpen(true);
+  }, [loading]);
+  const closeImagePicker = useCallback(() => {
+    setPickerOpen(false);
+  }, []);
 
   const headerTitle = flow ? FLOW_LABEL[flow] : 'DUSTALK AIエージェント';
   const headerSubtitle = flow ? '申し込みアシスタント' : undefined;
@@ -84,6 +98,7 @@ export default function ChatPage() {
         onUndo={undo}
         onFreeText={(text) => sendText(text)}
         onStepResponse={(stepId, value, label) => sendStepResponse(stepId, value, label)}
+        onOpenImagePicker={openImagePicker}
       />
       {error && (
         <div className="px-4 py-2 text-xs text-red-600 bg-red-50 border-t border-red-100">
@@ -94,6 +109,13 @@ export default function ChatPage() {
         onSendText={(text) => sendText(text)}
         onSendImageDetection={(names) => sendImageDetection(names)}
         disabled={loading}
+        pickerOpen={pickerOpen}
+        pickerError={pickerError}
+        pickerLoaded={pickerLoaded}
+        openImagePicker={openImagePicker}
+        closeImagePicker={closeImagePicker}
+        setPickerError={setPickerError}
+        setPickerLoaded={setPickerLoaded}
       />
     </div>
   );

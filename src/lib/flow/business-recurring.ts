@@ -16,7 +16,6 @@ import {
   STEP_elevator,
   addFirstItemStep,
   addMoreItemStep,
-  STEP_moreItemsQuestion,
   STEP_occupation,
   STEP_businessForm,
   STEP_businessStoreName,
@@ -45,8 +44,7 @@ export const businessRecurringNextStep: NextStepFn = (slots) => {
   if (!loc.elevator) return STEP_elevator;
 
   if (slots.items.length === 0) return addFirstItemStep();
-  if (slots.meta.noMoreItems === undefined) return STEP_moreItemsQuestion;
-  if (slots.meta.noMoreItems === false) return addMoreItemStep();
+  if (slots.meta.noMoreItems !== true) return addMoreItemStep();
 
   // 品目ごとに 数量・頻度・開始日 を埋める
   for (const item of slots.items) {

@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import type { ChipsPart } from '@/types/messages';
+import type { ChipsPart, ChipAction } from '@/types/messages';
 
 interface Props {
   part: ChipsPart;
   /** 単一選択時は label と value、複数選択時は配列 */
   onPick: (value: unknown, displayLabel: string) => void;
+  /** action 付きチップ選択時のクライアント側ハンドラ */
+  onAction?: (action: ChipAction) => void;
   /** 自由テキスト入力時のコールバック。undefined なら入力欄を非表示。 */
   onFreeText?: (text: string) => void;
   disabled?: boolean;
@@ -20,7 +22,7 @@ function fmtTime(ms?: number): string {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-export function ChipsBubble({ part, onPick, onFreeText, disabled, createdAt, showTail = true }: Props) {
+export function ChipsBubble({ part, onPick, onAction, onFreeText, disabled, createdAt, showTail = true }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [freeText, setFreeText] = useState('');
   const isMulti = part.multi === true;
@@ -29,7 +31,12 @@ export function ChipsBubble({ part, onPick, onFreeText, disabled, createdAt, sho
     if (disabled) return;
     if (!isMulti) {
       const opt = part.options.find((o) => o.value === value);
-      if (opt) onPick(opt.value, opt.label);
+      if (!opt) return;
+      if (opt.action && onAction) {
+        onAction(opt.action);
+        return;
+      }
+      onPick(opt.value, opt.label);
       return;
     }
     setSelected((prev) => {

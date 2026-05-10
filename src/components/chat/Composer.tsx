@@ -6,15 +6,30 @@ interface Props {
   onSendText: (text: string) => void;
   onSendImageDetection: (detectedNames: string[]) => void;
   disabled?: boolean;
+  pickerOpen: boolean;
+  pickerError: string | null;
+  pickerLoaded: boolean;
+  openImagePicker: () => void;
+  closeImagePicker: () => void;
+  setPickerError: (err: string | null) => void;
+  setPickerLoaded: (loaded: boolean) => void;
 }
 
 const IMAGE_PICKER_ORIGIN = 'https://jvxqvfx3pv.ap-northeast-1.awsapprunner.com';
 
-export function Composer({ onSendText, onSendImageDetection, disabled }: Props) {
+export function Composer({
+  onSendText,
+  onSendImageDetection,
+  disabled,
+  pickerOpen,
+  pickerError,
+  pickerLoaded,
+  openImagePicker,
+  closeImagePicker,
+  setPickerError,
+  setPickerLoaded,
+}: Props) {
   const [value, setValue] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerError, setPickerError] = useState<string | null>(null);
-  const [pickerLoaded, setPickerLoaded] = useState(false);
   const [focused, setFocused] = useState(false);
 
   const submit = () => {
@@ -32,17 +47,6 @@ export function Composer({ onSendText, onSendImageDetection, disabled }: Props) 
     submit();
   };
 
-  const openImagePicker = () => {
-    if (disabled || pickerOpen) return;
-    setPickerError(null);
-    setPickerLoaded(false);
-    setPickerOpen(true);
-  };
-
-  const closeImagePicker = () => {
-    setPickerOpen(false);
-  };
-
   // postMessage 受信: 品目選択結果が外部アプリから飛んでくる
   useEffect(() => {
     if (!pickerOpen) return;
@@ -53,7 +57,7 @@ export function Composer({ onSendText, onSendImageDetection, disabled }: Props) 
       const names = Array.isArray(data.names)
         ? data.names.filter((n): n is string => typeof n === 'string' && n.length > 0)
         : [];
-      setPickerOpen(false);
+      closeImagePicker();
       if (names.length > 0) {
         onSendImageDetection(names);
       } else {
@@ -62,17 +66,17 @@ export function Composer({ onSendText, onSendImageDetection, disabled }: Props) 
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [pickerOpen, onSendImageDetection]);
+  }, [pickerOpen, onSendImageDetection, closeImagePicker, setPickerError]);
 
   // Escape キーでモーダルを閉じる
   useEffect(() => {
     if (!pickerOpen) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') setPickerOpen(false);
+      if (e.key === 'Escape') closeImagePicker();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pickerOpen]);
+  }, [pickerOpen, closeImagePicker]);
 
   // モーダル表示中は背景スクロールをロック
   useEffect(() => {
