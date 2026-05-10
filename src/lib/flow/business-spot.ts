@@ -7,14 +7,16 @@
 
 import type { NextStepFn } from './types';
 import {
+  STEP_manifestNotice,
   STEP_address,
   STEP_storeName,
-  STEP_buildingKind,
+  STEP_buildingKindBusiness,
+  STEP_floor,
   STEP_parking,
   STEP_elevator,
   STEP_dischargeMode,
-  STEP_addFirstItem,
-  STEP_addMoreItem,
+  addFirstItemStep,
+  addMoreItemStep,
   STEP_moreItemsQuestion,
   STEP_occupation,
   STEP_businessForm,
@@ -27,29 +29,63 @@ import {
   STEP_email,
   pickProviderStep,
   pickDatesStep,
+  bulkProviderConfirmStep,
+  bulkDateConfirmStep,
 } from './shared';
 
 export const businessSpotNextStep: NextStepFn = (slots) => {
-  // 業態は最初に聞く（テンプレ提案や PredictCost のためにも先に欲しい）
+  // 事業者フローの一番最初にマニフェスト交付義務の説明を提示する
+  if (!slots.meta.acknowledgedManifest) return STEP_manifestNotice;
+  // 業態は次に聞く（テンプレ提案や PredictCost のためにも先に欲しい）
   if (!slots.occupation) return STEP_occupation;
 
   const loc = slots.location;
   if (!loc.address) return STEP_address;
   if (!loc.storeName) return STEP_storeName;
-  if (!loc.buildingKind) return STEP_buildingKind;
+  if (!loc.buildingKind) return STEP_buildingKindBusiness;
+  if (!loc.floor) return STEP_floor;
   if (!loc.parking) return STEP_parking;
   if (!loc.elevator) return STEP_elevator;
   if (!loc.dischargeMode) return STEP_dischargeMode;
 
-  if (slots.items.length === 0) return STEP_addFirstItem;
+  if (slots.items.length === 0) return addFirstItemStep(slots.flow, slots);
   if (slots.meta.noMoreItems === undefined) return STEP_moreItemsQuestion;
-  if (slots.meta.noMoreItems === false) return STEP_addMoreItem;
+  if (slots.meta.noMoreItems === false) return addMoreItemStep(slots.flow, slots);
 
+  // ----- 依頼先 phase -----
+  const providersSet = slots.providerAssignments.filter((a) => a.provider).length;
+  if (
+    providersSet === 1 &&
+    slots.items.length > 1 &&
+    !slots.meta.bulkProviderAsked
+  ) {
+    return bulkProviderConfirmStep(slots);
+  }
   for (const item of slots.items) {
     const a = slots.providerAssignments.find((x) => x.itemId === item.id);
-    if (!a?.provider) return pickProviderStep(item);
-    if (a.provider === '民間事業者に依頼' && (!a.preferredDates || a.preferredDates.length === 0)) {
-      return pickDatesStep(item);
+    if (!a?.provider) return pickProviderStep(item, slots);
+  }
+
+  // ----- 希望回収日時 phase -----
+  const itemsNeedingDates = slots.items.filter((item) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
+    return a?.provider === '民間事業者に依頼';
+  });
+  const datesSet = itemsNeedingDates.filter((item) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
+    return a?.preferredDates && a.preferredDates.length > 0;
+  }).length;
+  if (
+    datesSet === 1 &&
+    itemsNeedingDates.length > 1 &&
+    !slots.meta.bulkDateAsked
+  ) {
+    return bulkDateConfirmStep(slots);
+  }
+  for (const item of itemsNeedingDates) {
+    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
+    if (!a?.preferredDates || a.preferredDates.length === 0) {
+      return pickDatesStep(item, slots);
     }
   }
 

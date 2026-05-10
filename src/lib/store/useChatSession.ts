@@ -21,6 +21,15 @@ interface ApiResult {
   done: boolean;
 }
 
+/** 「やり直す」用の状態スナップショット。各ユーザー応答を送る直前にスタックに積む。 */
+interface HistorySnapshot {
+  flow: FlowKind | null;
+  slots: Slots;
+  /** スナップショット時点での messages.length。undo 時にここまで slice する。 */
+  messagesLength: number;
+  done: boolean;
+}
+
 interface ChatState {
   /** 確定済みの flow。null=まだ自由発話で flow 推定中。 */
   flow: FlowKind | null;
@@ -31,6 +40,9 @@ interface ChatState {
   done: boolean;
   error: string | null;
 
+  /** ユーザー応答の直前に積むスナップショット履歴。空なら undo 不可。 */
+  slotsHistory: HistorySnapshot[];
+
   /** チャット画面の初期化。初回挨拶を取りに行く。 */
   initSession: () => Promise<void>;
 
@@ -40,6 +52,15 @@ interface ChatState {
   sendStepResponse: (stepId: string, value: unknown, displayLabel: string) => Promise<void>;
   /** ImageModel の検出結果を送る */
   sendImageDetection: (detectedNames: string[]) => Promise<void>;
+
+  /** 直近のユーザー応答を取り消し、その応答を送る前の状態に戻す。スタック式なので連打で複数回戻れる。 */
+  undo: () => void;
+
+  /**
+   * 確認画面の「編集」ボタンから呼ばれる。slots を mutate で書き換え、
+   * done=false にしてサーバーから次の step を取りに行く（state machine が空き field を質問してくれる）。
+   */
+  editField: (mutate: (s: Slots) => Slots) => Promise<void>;
 
   reset: () => void;
 }
@@ -70,6 +91,7 @@ export const useChatSession = create<ChatState>((set, get) => ({
   loading: false,
   done: false,
   error: null,
+  slotsHistory: [],
 
   reset: () =>
     set({
@@ -79,6 +101,7 @@ export const useChatSession = create<ChatState>((set, get) => ({
       loading: false,
       done: false,
       error: null,
+      slotsHistory: [],
     }),
 
   initSession: async () => {
@@ -89,6 +112,7 @@ export const useChatSession = create<ChatState>((set, get) => ({
       loading: true,
       done: false,
       error: null,
+      slotsHistory: [],
     });
     try {
       const r = await callApi(null, null, { kind: 'init' });
@@ -99,15 +123,21 @@ export const useChatSession = create<ChatState>((set, get) => ({
   },
 
   sendText: async (text) => {
-    const { flow, slots, messages } = get();
+    const { flow, slots, messages, done, slotsHistory } = get();
     if (!text.trim()) return;
+    const snapshot: HistorySnapshot = { flow, slots, messagesLength: messages.length, done };
     const userMsg: ChatMessage = {
       role: 'user',
       text,
       createdAt: Date.now(),
       meta: { source: 'free_text' },
     };
-    set({ messages: [...messages, userMsg], loading: true, error: null });
+    set({
+      messages: [...messages, userMsg],
+      slotsHistory: [...slotsHistory, snapshot],
+      loading: true,
+      error: null,
+    });
     try {
       const r = await callApi(flow, flow ? slots : null, { kind: 'text', text });
       handleApiResult(set, get, r, null);
@@ -117,14 +147,20 @@ export const useChatSession = create<ChatState>((set, get) => ({
   },
 
   sendStepResponse: async (stepId, value, displayLabel) => {
-    const { flow, slots, messages } = get();
+    const { flow, slots, messages, done, slotsHistory } = get();
+    const snapshot: HistorySnapshot = { flow, slots, messagesLength: messages.length, done };
     const userMsg: ChatMessage = {
       role: 'user',
       text: displayLabel,
       createdAt: Date.now(),
       meta: { source: 'chips' },
     };
-    set({ messages: [...messages, userMsg], loading: true, error: null });
+    set({
+      messages: [...messages, userMsg],
+      slotsHistory: [...slotsHistory, snapshot],
+      loading: true,
+      error: null,
+    });
     try {
       const r = await callApi(flow, flow ? slots : null, { kind: 'step', stepId, value });
       handleApiResult(set, get, r, null);
@@ -134,8 +170,9 @@ export const useChatSession = create<ChatState>((set, get) => ({
   },
 
   sendImageDetection: async (detectedNames) => {
-    const { flow, slots, messages } = get();
+    const { flow, slots, messages, done, slotsHistory } = get();
     if (!flow || detectedNames.length === 0) return;
+    const snapshot: HistorySnapshot = { flow, slots, messagesLength: messages.length, done };
     const summary = `【画像から検出】${detectedNames.join(', ')}`;
     const userMsg: ChatMessage = {
       role: 'user',
@@ -143,9 +180,49 @@ export const useChatSession = create<ChatState>((set, get) => ({
       createdAt: Date.now(),
       meta: { source: 'image' },
     };
-    set({ messages: [...messages, userMsg], loading: true, error: null });
+    set({
+      messages: [...messages, userMsg],
+      slotsHistory: [...slotsHistory, snapshot],
+      loading: true,
+      error: null,
+    });
     try {
       const r = await callApi(flow, slots, { kind: 'image', detectedNames });
+      handleApiResult(set, get, r, null);
+    } catch (e) {
+      set({ loading: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  undo: () => {
+    const { slotsHistory, messages, loading } = get();
+    if (loading || slotsHistory.length === 0) return;
+    const last = slotsHistory[slotsHistory.length - 1];
+    set({
+      flow: last.flow,
+      slots: last.slots,
+      done: last.done,
+      messages: messages.slice(0, last.messagesLength),
+      slotsHistory: slotsHistory.slice(0, -1),
+      error: null,
+    });
+  },
+
+  editField: async (mutate) => {
+    const { flow, slots, messages, done, slotsHistory, loading } = get();
+    if (loading || !flow) return;
+    const snapshot: HistorySnapshot = { flow, slots, messagesLength: messages.length, done };
+    const newSlots = mutate(slots);
+    set({
+      slots: newSlots,
+      done: false,
+      loading: true,
+      error: null,
+      slotsHistory: [...slotsHistory, snapshot],
+    });
+    try {
+      // kind:'init' は flow 確定後だと「現在の slots から next step を計算して返す」だけの動き。
+      const r = await callApi(flow, newSlots, { kind: 'init' });
       handleApiResult(set, get, r, null);
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });

@@ -7,7 +7,16 @@
 import { z } from 'zod';
 import type { SlotPatch } from './merge';
 
-const BuildingKindSchema = z.enum(['戸建て', 'マンション・アパート', '倉庫', 'その他']);
+const BuildingKindSchema = z.enum([
+  '戸建て',
+  'マンション・アパート',
+  '倉庫',
+  '路面店・独立店舗',
+  'ビル内テナント・事務所',
+  '商業施設内',
+  '工場・倉庫',
+  'その他',
+]);
 const YesNoSchema = z.enum(['あり', 'なし']);
 const DischargeModeSchema = z.enum(['自分で排出', '排出を希望']);
 const FrequencySchema = z.enum([
@@ -51,6 +60,7 @@ const LocationSchema = z
     addressComponents: AddressComponentsSchema.optional(),
     storeName: z.string().min(1).optional(),
     buildingKind: BuildingKindSchema.optional(),
+    floor: z.string().min(1).optional(),
     parking: YesNoSchema.optional(),
     elevator: YesNoSchema.optional(),
     dischargeMode: DischargeModeSchema.optional(),
@@ -95,6 +105,9 @@ const MetaSchema = z
   .object({
     noMoreItems: z.boolean().optional(),
     confirmedCategories: z.boolean().optional(),
+    acknowledgedManifest: z.boolean().optional(),
+    bulkProviderAsked: z.boolean().optional(),
+    bulkDateAsked: z.boolean().optional(),
   })
   .partial();
 
@@ -147,6 +160,7 @@ export function validateSlotPatch(raw: unknown): ValidatedSlotPatch {
       ['addressComponents', AddressComponentsSchema],
       ['storeName', z.string().min(1)],
       ['buildingKind', BuildingKindSchema],
+      ['floor', z.string().min(1)],
       ['parking', YesNoSchema],
       ['elevator', YesNoSchema],
       ['dischargeMode', DischargeModeSchema],
@@ -256,6 +270,18 @@ export function validateSlotPatch(raw: unknown): ValidatedSlotPatch {
     if (m.confirmedCategories !== undefined) {
       if (typeof m.confirmedCategories === 'boolean') out.confirmedCategories = m.confirmedCategories;
       else dropped.push('meta.confirmedCategories');
+    }
+    if (m.acknowledgedManifest !== undefined) {
+      if (typeof m.acknowledgedManifest === 'boolean') out.acknowledgedManifest = m.acknowledgedManifest;
+      else dropped.push('meta.acknowledgedManifest');
+    }
+    if (m.bulkProviderAsked !== undefined) {
+      if (typeof m.bulkProviderAsked === 'boolean') out.bulkProviderAsked = m.bulkProviderAsked;
+      else dropped.push('meta.bulkProviderAsked');
+    }
+    if (m.bulkDateAsked !== undefined) {
+      if (typeof m.bulkDateAsked === 'boolean') out.bulkDateAsked = m.bulkDateAsked;
+      else dropped.push('meta.bulkDateAsked');
     }
     if (Object.keys(out).length > 0) patch.meta = out;
   }

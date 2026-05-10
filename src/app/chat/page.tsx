@@ -22,10 +22,13 @@ export default function ChatPage() {
     loading,
     done,
     error,
+    slotsHistory,
     initSession,
     sendText,
     sendStepResponse,
     sendImageDetection,
+    undo,
+    editField,
     reset,
   } = useChatSession();
 
@@ -58,6 +61,7 @@ export default function ChatPage() {
           onEdit={() => {
             useChatSession.setState({ done: false });
           }}
+          onEditField={editField}
         />
       </div>
     );
@@ -76,6 +80,8 @@ export default function ChatPage() {
       <ChatThread
         messages={messages}
         loading={loading}
+        canUndo={slotsHistory.length > 0}
+        onUndo={undo}
         onFreeText={(text) => sendText(text)}
         onStepResponse={(stepId, value, label) => sendStepResponse(stepId, value, label)}
       />

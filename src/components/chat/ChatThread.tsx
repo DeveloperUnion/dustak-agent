@@ -11,11 +11,13 @@ import type { AddressComponents } from '@/lib/slots/types';
 interface Props {
   messages: ChatMessage[];
   loading: boolean;
+  canUndo: boolean;
+  onUndo: () => void;
   onStepResponse: (stepId: string, value: unknown, displayLabel: string) => void;
   onFreeText: (text: string) => void;
 }
 
-export function ChatThread({ messages, loading, onStepResponse, onFreeText }: Props) {
+export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse, onFreeText }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,6 +27,13 @@ export function ChatThread({ messages, loading, onStepResponse, onFreeText }: Pr
   const lastAssistantIdx = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'assistant') return i;
+    }
+    return -1;
+  })();
+
+  const lastUserIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') return i;
     }
     return -1;
   })();
@@ -61,14 +70,28 @@ export function ChatThread({ messages, loading, onStepResponse, onFreeText }: Pr
         const showTail = !prev || prev.role !== m.role;
 
         if (m.role === 'user') {
+          const showUndo = i === lastUserIdx && canUndo && !loading;
           return (
-            <TextBubble
-              key={i}
-              role="user"
-              text={m.text}
-              createdAt={m.createdAt}
-              showTail={showTail}
-            />
+            <div key={i}>
+              <TextBubble
+                role="user"
+                text={m.text}
+                createdAt={m.createdAt}
+                showTail={showTail}
+              />
+              {showUndo && (
+                <div className="flex justify-end px-5 mt-1">
+                  <button
+                    type="button"
+                    onClick={onUndo}
+                    className="text-[11px] tracking-[0.18em] uppercase text-[var(--ink-mute)] hover:text-[var(--brand)] transition-colors"
+                    title="直前の回答を取り消して同じ質問に戻る"
+                  >
+                    ↶ やり直す
+                  </button>
+                </div>
+              )}
+            </div>
           );
         }
         const isLast = i === lastAssistantIdx;
