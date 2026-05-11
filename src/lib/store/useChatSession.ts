@@ -69,6 +69,12 @@ interface ChatState {
    */
   editField: (mutate: (s: Slots) => Slots) => Promise<void>;
 
+  /**
+   * 確認画面内で完結する編集。slots を mutate で更新し、history snapshot を積むだけ。
+   * done は維持、API は叩かない、メッセージも追加しない。
+   */
+  applyConfirmationEdit: (mutate: (s: Slots) => Slots) => void;
+
   reset: () => void;
 }
 
@@ -261,6 +267,23 @@ export const useChatSession = create<ChatState>((set, get) => ({
       messages: messages.slice(0, last.messagesLength),
       slotsHistory: slotsHistory.slice(0, -1),
       pendingDetectedNames: last.pendingDetectedNames,
+      error: null,
+    });
+  },
+
+  applyConfirmationEdit: (mutate) => {
+    const { flow, slots, messages, done, slotsHistory, loading, pendingDetectedNames } = get();
+    if (loading || !flow) return;
+    const snapshot: HistorySnapshot = {
+      flow,
+      slots,
+      messagesLength: messages.length,
+      done,
+      pendingDetectedNames,
+    };
+    set({
+      slots: mutate(slots),
+      slotsHistory: [...slotsHistory, snapshot],
       error: null,
     });
   },
