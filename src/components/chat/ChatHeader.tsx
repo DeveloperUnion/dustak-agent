@@ -1,10 +1,38 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
 interface Props {
   title: string;
   subtitle?: string;
   onBack: () => void;
+  /** 「ご用件を変更する」メニュー項目から呼ばれる。会話を初期状態に戻し挨拶からやり直す。 */
+  onResetSession: () => void;
 }
 
-export function ChatHeader({ title, subtitle, onBack }: Props) {
+export function ChatHeader({ title, subtitle, onBack, onResetSession }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // 外側クリック or Escape で閉じる
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
   return (
     <header className="relative bg-white/90 backdrop-blur-md border-b border-[var(--line)]">
       {/* 上部のヘアライン装飾 */}
@@ -56,19 +84,46 @@ export function ChatHeader({ title, subtitle, onBack }: Props) {
           )}
         </div>
 
-        {/* 右側装飾 — メニューアイコン */}
-        <button
-          type="button"
-          className="p-2 rounded-full text-[var(--ink-soft)] hover:text-[var(--ink)] hover:bg-[var(--ink)]/5 transition-colors"
-          title="メニュー"
-          aria-label="menu"
-        >
-          <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-            <circle cx="12" cy="5" r="1.1" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.1" fill="currentColor" />
-            <circle cx="12" cy="19" r="1.1" fill="currentColor" />
-          </svg>
-        </button>
+        {/* 右側 — メニュー（ご用件を変更する など） */}
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            className="p-2 rounded-full text-[var(--ink-soft)] hover:text-[var(--ink)] hover:bg-[var(--ink)]/5 transition-colors"
+            title="メニュー"
+            aria-label="menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+              <circle cx="12" cy="5" r="1.1" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.1" fill="currentColor" />
+              <circle cx="12" cy="19" r="1.1" fill="currentColor" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-1.5 min-w-[180px] bg-white border border-[var(--line)] rounded-[10px] shadow-[0_8px_28px_-10px_rgba(11,30,74,0.35)] py-1 z-50"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onResetSession();
+                }}
+                className="w-full text-left px-3.5 py-2 text-[13px] text-[var(--ink)] hover:bg-[var(--surface)] transition-colors flex items-center gap-2"
+              >
+                <svg className="w-[14px] h-[14px] text-[var(--ink-soft)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 3-6.7" />
+                  <path d="M3 4v5h5" />
+                </svg>
+                ご用件を変更する
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 下部のオーナメント罫 */}
