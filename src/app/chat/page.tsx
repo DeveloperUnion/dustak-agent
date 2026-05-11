@@ -29,6 +29,7 @@ export default function ChatPage() {
     sendImageDetection,
     undo,
     editField,
+    applyConfirmationEdit,
     reset,
   } = useChatSession();
 
@@ -79,6 +80,7 @@ export default function ChatPage() {
             useChatSession.setState({ done: false });
           }}
           onEditField={editField}
+          onApplyEdit={applyConfirmationEdit}
         />
       </div>
     );
