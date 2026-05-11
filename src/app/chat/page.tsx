@@ -56,15 +56,18 @@ export default function ChatPage() {
   const headerTitle = flow ? FLOW_LABEL[flow] : 'DUSTALK AIエージェント';
   const headerSubtitle = flow ? '申し込みアシスタント' : undefined;
 
+  const resetSession = () => {
+    reset();
+    initSession();
+  };
+
   if (done && flow) {
     return (
       <div className="flex flex-col h-dvh bg-white">
         <ChatHeader
           title={`${FLOW_LABEL[flow]} - 確認`}
-          onBack={() => {
-            reset();
-            initSession();
-          }}
+          onBack={resetSession}
+          onResetSession={resetSession}
         />
         <ConfirmationView
           slots={slots}
@@ -86,10 +89,8 @@ export default function ChatPage() {
       <ChatHeader
         title={headerTitle}
         subtitle={headerSubtitle}
-        onBack={() => {
-          reset();
-          initSession();
-        }}
+        onBack={resetSession}
+        onResetSession={resetSession}
       />
       <ChatThread
         messages={messages}

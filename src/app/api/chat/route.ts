@@ -41,6 +41,8 @@ interface ChatRequest {
   flow: FlowKind | null;
   slots: Slots | null;
   response: ChatResponseInput;
+  /** flow=null 中に画像ピッカーで蓄積された検出品目。flow 確定タイミングで items[] に投入される。 */
+  pendingDetectedNames?: string[];
 }
 
 interface ChatApiResult {
@@ -180,10 +182,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
 
-  const { flow: incomingFlow, slots: incomingSlots, response } = body;
+  const { flow: incomingFlow, slots: incomingSlots, response, pendingDetectedNames } = body;
   if (!response) {
     return NextResponse.json({ error: 'missing fields' }, { status: 400 });
   }
+
+  const hasPendingImages = Array.isArray(pendingDetectedNames) && pendingDetectedNames.length > 0;
+  const detectedItemsToText = (names: string[]) =>
+    `【画像から検出された品目】\n${names.map((n, i) => `${i + 1}. ${n}`).join('\n')}`;
 
   // ----- flow 未確定 (incomingFlow=null) のハンドリング -----
   if (incomingFlow === null) {
@@ -205,11 +211,33 @@ export async function POST(req: Request) {
         picked === 'business_recurring'
       ) {
         const initialSlots = emptySlots(picked);
-        const next = nextStep(picked, initialSlots);
+        let workingSlots = initialSlots;
+        let slotPatch: SlotPatch = {};
+        let ackText: string | undefined;
+
+        // flow=null 期間中に画像で蓄積された検出品目を items[] に投入する
+        if (hasPendingImages) {
+          try {
+            const extracted = await callExtractor(
+              picked,
+              initialSlots,
+              detectedItemsToText(pendingDetectedNames!),
+            );
+            slotPatch = extracted.slotPatch;
+            ackText = extracted.ackText;
+            workingSlots = applySlotPatch(initialSlots, slotPatch);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return NextResponse.json({ error: 'processing failed', message }, { status: 502 });
+          }
+        }
+
+        const next = nextStep(picked, workingSlots);
         const result: ChatApiResult = {
           flow: picked,
-          slotPatch: {},
-          assistantParts: next ? next.render(initialSlots) : [],
+          slotPatch,
+          ackText,
+          assistantParts: next ? next.render(workingSlots) : [],
           done: next === null,
         };
         return NextResponse.json(result);
@@ -240,12 +268,15 @@ export async function POST(req: Request) {
         return NextResponse.json(result);
       }
 
-      // 2. flow 確定 → 同じテキストで extractor を回し最大限スロットを埋める
+      // 2. flow 確定 → 同じテキスト（+ あれば画像で蓄積した品目）で extractor を回す
       const determinedFlow = classified.flow;
       const initialSlots = emptySlots(determinedFlow);
+      const combinedText = hasPendingImages
+        ? `${response.text}\n\n${detectedItemsToText(pendingDetectedNames!)}`
+        : response.text;
       let extracted: { ackText?: string; slotPatch: SlotPatch };
       try {
-        extracted = await callExtractor(determinedFlow, initialSlots, response.text);
+        extracted = await callExtractor(determinedFlow, initialSlots, combinedText);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return NextResponse.json({ error: 'processing failed', message }, { status: 502 });
@@ -262,8 +293,24 @@ export async function POST(req: Request) {
       return NextResponse.json(result);
     }
 
-    // image など flow 未確定で扱えない種類
-    return NextResponse.json({ error: 'flow not determined' }, { status: 400 });
+    if (response.kind === 'image') {
+      // flow 未確定で画像を受けた: items[] への投入は flow.pick 後に行うため、ここでは
+      // bot が「品目を確認しました。個人/事業者どちらですか?」と返して flow pick chips を出す
+      const names = response.detectedNames.filter((n) => typeof n === 'string' && n.length > 0);
+      const ack =
+        names.length > 0
+          ? `画像から ${names.join('、')} を確認しました。これらを処分されたいということでよろしいですか?\nご利用シーンを教えてください。`
+          : 'ご利用シーンを教えてください。';
+      const result: ChatApiResult = {
+        flow: null,
+        slotPatch: {},
+        assistantParts: flowPickParts(ack),
+        done: false,
+      };
+      return NextResponse.json(result);
+    }
+
+    return NextResponse.json({ error: 'invalid response kind' }, { status: 400 });
   }
 
   // ----- flow 確定後の通常フロー -----
