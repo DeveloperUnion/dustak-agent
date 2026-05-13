@@ -20,6 +20,17 @@ export type SlotPatch = {
 export function applySlotPatch(slots: Slots, patch: SlotPatch | undefined | null): Slots {
   if (!patch) return slots;
 
+  // meta 内の配列フィールド（freeProviderReviewedItemIds）は concat + 重複排除する。
+  // それ以外の meta フィールドは spread で上書き。
+  const mergedMeta: Slots['meta'] = { ...slots.meta, ...(patch.meta ?? {}) };
+  if (patch.meta?.freeProviderReviewedItemIds) {
+    const merged = [
+      ...(slots.meta.freeProviderReviewedItemIds ?? []),
+      ...patch.meta.freeProviderReviewedItemIds,
+    ];
+    mergedMeta.freeProviderReviewedItemIds = Array.from(new Set(merged));
+  }
+
   const next: Slots = {
     ...slots,
     occupation: patch.occupation ?? slots.occupation,
@@ -27,7 +38,7 @@ export function applySlotPatch(slots: Slots, patch: SlotPatch | undefined | null
     requester: { ...slots.requester, ...(patch.requester ?? {}) },
     items: [...slots.items],
     providerAssignments: [...slots.providerAssignments],
-    meta: { ...slots.meta, ...(patch.meta ?? {}) },
+    meta: mergedMeta,
   };
 
   if (patch.items) {

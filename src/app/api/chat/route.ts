@@ -28,21 +28,29 @@ import {
 } from '@/lib/mocks/predictCost';
 import { emptySlots, type FlowKind, type Slots } from '@/lib/slots/types';
 import type { AssistantPart } from '@/types/messages';
+import { parseDetectedInfo } from '@/lib/imageDetectionParser';
 
 export const runtime = 'nodejs';
+
+interface DetectedItemInput {
+  name: string;
+  info?: string;
+}
 
 type ChatResponseInput =
   | { kind: 'init' }
   | { kind: 'step'; stepId: string; value: unknown }
   | { kind: 'text'; text: string }
-  | { kind: 'image'; detectedNames: string[] };
+  | { kind: 'image'; detectedItems: DetectedItemInput[] };
 
 interface ChatRequest {
   flow: FlowKind | null;
   slots: Slots | null;
   response: ChatResponseInput;
-  /** flow=null 中に画像ピッカーで蓄積された検出品目。flow 確定タイミングで items[] に投入される。 */
-  pendingDetectedNames?: string[];
+  /** flow=null 中に画像ピッカーで蓄積された検出品目（name + info）。flow 確定タイミングで items[] に投入される。 */
+  pendingDetectedItems?: DetectedItemInput[];
+  /** flow=null 中の最初のユーザー自由発話。flow.pick chip 押下時に extractor へ同梱される。 */
+  pendingInitialText?: string;
 }
 
 interface ChatApiResult {
@@ -182,14 +190,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
 
-  const { flow: incomingFlow, slots: incomingSlots, response, pendingDetectedNames } = body;
+  const {
+    flow: incomingFlow,
+    slots: incomingSlots,
+    response,
+    pendingDetectedItems,
+    pendingInitialText,
+  } = body;
   if (!response) {
     return NextResponse.json({ error: 'missing fields' }, { status: 400 });
   }
 
-  const hasPendingImages = Array.isArray(pendingDetectedNames) && pendingDetectedNames.length > 0;
-  const detectedItemsToText = (names: string[]) =>
-    `【画像から検出された品目】\n${names.map((n, i) => `${i + 1}. ${n}`).join('\n')}`;
+  const hasPendingImages =
+    Array.isArray(pendingDetectedItems) && pendingDetectedItems.length > 0;
+  const hasPendingInitialText =
+    typeof pendingInitialText === 'string' && pendingInitialText.trim().length > 0;
+  /**
+   * 検出品目を LLM extractor 用テキストに整形。
+   * info に key:value が入っていれば構造化属性として一緒に渡す。
+   */
+  const detectedItemsToText = (items: DetectedItemInput[]) => {
+    const lines = items.map((it, i) => {
+      const parsed = parseDetectedInfo(it.info);
+      const attrs: string[] = [];
+      if (parsed.manufacturer) attrs.push(`メーカー: ${parsed.manufacturer}`);
+      if (parsed.yearOfManufacture) attrs.push(`年式: ${parsed.yearOfManufacture}`);
+      if (parsed.capacity) attrs.push(`容量: ${parsed.capacity}`);
+      const suffix = attrs.length > 0 ? ` (${attrs.join(', ')})` : '';
+      return `${i + 1}. ${it.name}${suffix}`;
+    });
+    return `【画像から検出された品目】\n${lines.join('\n')}`;
+  };
 
   // ----- flow 未確定 (incomingFlow=null) のハンドリング -----
   if (incomingFlow === null) {
@@ -215,13 +246,18 @@ export async function POST(req: Request) {
         let slotPatch: SlotPatch = {};
         let ackText: string | undefined;
 
-        // flow=null 期間中に画像で蓄積された検出品目を items[] に投入する
-        if (hasPendingImages) {
+        // flow=null 期間中に蓄積された情報を items[] 等に投入する:
+        //  - pendingInitialText: 最初のユーザー自由発話
+        //  - pendingDetectedItems: 画像から検出された品目
+        const sources: string[] = [];
+        if (hasPendingInitialText) sources.push(pendingInitialText!.trim());
+        if (hasPendingImages) sources.push(detectedItemsToText(pendingDetectedItems!));
+        if (sources.length > 0) {
           try {
             const extracted = await callExtractor(
               picked,
               initialSlots,
-              detectedItemsToText(pendingDetectedNames!),
+              sources.join('\n\n'),
             );
             slotPatch = extracted.slotPatch;
             ackText = extracted.ackText;
@@ -272,7 +308,7 @@ export async function POST(req: Request) {
       const determinedFlow = classified.flow;
       const initialSlots = emptySlots(determinedFlow);
       const combinedText = hasPendingImages
-        ? `${response.text}\n\n${detectedItemsToText(pendingDetectedNames!)}`
+        ? `${response.text}\n\n${detectedItemsToText(pendingDetectedItems!)}`
         : response.text;
       let extracted: { ackText?: string; slotPatch: SlotPatch };
       try {
@@ -296,7 +332,9 @@ export async function POST(req: Request) {
     if (response.kind === 'image') {
       // flow 未確定で画像を受けた: items[] への投入は flow.pick 後に行うため、ここでは
       // bot が「品目を確認しました。個人/事業者どちらですか?」と返して flow pick chips を出す
-      const names = response.detectedNames.filter((n) => typeof n === 'string' && n.length > 0);
+      const names = response.detectedItems
+        .map((d) => d.name)
+        .filter((n) => typeof n === 'string' && n.length > 0);
       const ack =
         names.length > 0
           ? `画像から ${names.join('、')} を確認しました。これらを処分されたいということでよろしいですか?\nご利用シーンを教えてください。`
@@ -348,9 +386,7 @@ export async function POST(req: Request) {
       ackText = result.ackText;
       workingSlots = applySlotPatch(workingSlots, appliedPatch);
     } else if (response.kind === 'image') {
-      const text = `【画像から検出された品目】\n${response.detectedNames
-        .map((n, i) => `${i + 1}. ${n}`)
-        .join('\n')}`;
+      const text = detectedItemsToText(response.detectedItems);
       const result = await callExtractor(flow, slots, text);
       appliedPatch = result.slotPatch;
       ackText = result.ackText;

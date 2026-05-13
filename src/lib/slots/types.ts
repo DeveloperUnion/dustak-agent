@@ -63,6 +63,10 @@ export interface Item {
   estimatedQuantity?: string; // 例: "45L × 3袋/日"
   frequency?: Frequency; // 定期回収のみ
   startDate?: string; // YYYY-MM-DD（定期回収のみ）
+  // 無料引取候補（家電等）の追加情報。画像検知から取得できればデフォルト埋め
+  manufacturer?: string; // メーカー名（例: "Panasonic"）
+  yearOfManufacture?: string; // 製造年（例: "2020"、自由表現も許容）
+  capacity?: string; // 容量（例: "300L" "8kg" "20畳"）
 }
 
 // 依頼先選択（個人/事業者スポット時）
@@ -108,8 +112,10 @@ export interface SlotsMeta {
   confirmedCategories?: boolean;
   /** 事業者フロー先頭のマニフェスト交付義務に関する説明をユーザーが確認したか */
   acknowledgedManifest?: boolean;
-  /** 1品目目の依頼先選択後、「他の品目も同じにする?」を1度問い合わせ済みか（per-item モードに固定するためのフラグ）*/
-  bulkProviderAsked?: boolean;
+  /** 品目確定後の「品目リスト総覧 → 無料引取候補がある旨」ステップを通過したか */
+  itemsReviewed?: boolean;
+  /** 無料引取候補の家電情報フォームで確定/キャンセル済の itemId 一覧 */
+  freeProviderReviewedItemIds?: string[];
   /** 1品目目の希望回収日時選択後、「他の品目も同じ日時にする?」を1度問い合わせ済みか */
   bulkDateAsked?: boolean;
 }

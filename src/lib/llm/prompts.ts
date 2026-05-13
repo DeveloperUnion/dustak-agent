@@ -136,9 +136,11 @@ ${JSON.stringify(slots, null, 2)}
 - occupation: 業態の自由表現（例: "ラーメン屋"）。事業者向け
 - location: { address?, addressComponents?: { postalCode?, prefecture?, city?, ward?, town?, block?, building?, placeId?, lat?, lng? }, storeName?, buildingKind?, floor?, parking?, elevator?, dischargeMode?, note? }
   - floor: 回収品の置き場の階。"1階" "2階" "3階" "4階以上" のいずれかか、自由表現（"地下1階" 等）でもよい。
-- items: [{ id: "item-1", label, industrialCategory?, estimatedQuantity?, frequency?, startDate? }]
+- items: [{ id: "item-1", label, industrialCategory?, estimatedQuantity?, frequency?, startDate?, manufacturer?, yearOfManufacture?, capacity? }]
   - 既存 id を指定すれば差分更新、新しい id なら追加
   - 産廃20分類（事業者の場合のみ）は AI が自動付与してよい
+  - manufacturer / yearOfManufacture / capacity は家電など無料引取候補の付帯情報。
+    画像検知テキストの "(メーカー: ..., 年式: ..., 容量: ...)" や、ユーザー発話から拾えれば該当品目に詰めてよい。
 - providerAssignments: [{ itemId, provider?, preferredDates? }]
 - requester: { businessForm?, storeName?, businessName?, businessNameKana?, contactName?, contactNameKana?, phone?, email? }
 
