@@ -2,9 +2,14 @@
 
 import { useEffect, useState, type KeyboardEvent } from 'react';
 
+export interface DetectedItemInput {
+  name: string;
+  info?: string;
+}
+
 interface Props {
   onSendText: (text: string) => void;
-  onSendImageDetection: (detectedNames: string[]) => void;
+  onSendImageDetection: (detectedItems: DetectedItemInput[]) => void;
   disabled?: boolean;
   pickerOpen: boolean;
   pickerError: string | null;
@@ -48,18 +53,32 @@ export function Composer({
   };
 
   // postMessage 受信: 品目選択結果が外部アプリから飛んでくる
+  // 新形式: { type: 'dustalk:items', items: [{ name, info? }] }
+  // 旧形式: { type: 'dustalk:items', names: string[] } も後方互換で受け付ける
   useEffect(() => {
     if (!pickerOpen) return;
     const handler = (e: MessageEvent) => {
       if (e.origin !== IMAGE_PICKER_ORIGIN) return;
-      const data = e.data as { type?: string; names?: unknown };
+      const data = e.data as { type?: string; names?: unknown; items?: unknown };
       if (data?.type !== 'dustalk:items') return;
-      const names = Array.isArray(data.names)
-        ? data.names.filter((n): n is string => typeof n === 'string' && n.length > 0)
-        : [];
+      let detected: DetectedItemInput[] = [];
+      if (Array.isArray(data.items)) {
+        for (const it of data.items as unknown[]) {
+          if (!it || typeof it !== 'object') continue;
+          const obj = it as Record<string, unknown>;
+          const name = typeof obj.name === 'string' ? obj.name : null;
+          if (!name || name.length === 0) continue;
+          const info = typeof obj.info === 'string' ? obj.info : undefined;
+          detected.push(info !== undefined ? { name, info } : { name });
+        }
+      } else if (Array.isArray(data.names)) {
+        detected = (data.names as unknown[])
+          .filter((n): n is string => typeof n === 'string' && n.length > 0)
+          .map((name) => ({ name }));
+      }
       closeImagePicker();
-      if (names.length > 0) {
-        onSendImageDetection(names);
+      if (detected.length > 0) {
+        onSendImageDetection(detected);
       } else {
         setPickerError('品目が選択されませんでした');
       }

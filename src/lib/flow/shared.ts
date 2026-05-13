@@ -6,6 +6,7 @@
 import type { Step } from './types';
 import type { Slots, Item, ProviderChoice, PreferredDate, Frequency, AddressComponents } from '@/lib/slots/types';
 import type { SlotPatch } from '@/lib/slots/merge';
+import { isFreeProviderEligible } from '@/lib/mocks/freeProviderEligibility';
 
 // ---------- 事業者フロー先頭: マニフェスト説明 ----------
 
@@ -206,52 +207,44 @@ export function addFirstItemStep(): Step {
 export function addMoreItemStep(): Step {
   return {
     id: 'items.addMore',
-    render: () => [
-      { kind: 'text', text: '次の品目を教えてください。' },
-      {
-        kind: 'chips',
-        stepId: 'items.addMore',
-        options: [
-          {
-            label: '📷 画像から選択',
-            value: IMAGE_ACTION_VALUE,
-            action: 'open_image_picker',
-          },
-          { label: '品目を確定する', value: NO_MORE_ITEMS_VALUE },
-        ],
-        allowFreeText: true,
-      },
-    ],
+    render: (slots) => {
+      const lines = slots.items.map((i, idx) => `${idx + 1}. ${i.label}`);
+      const text =
+        slots.items.length > 0
+          ? `【ご登録済み】\n${lines.join('\n')}\n\n他に処分したい品目はありますか?`
+          : '次の品目を教えてください。';
+      return [
+        { kind: 'text', text },
+        {
+          kind: 'chips',
+          stepId: 'items.addMore',
+          options: [
+            {
+              label: '📷 画像から選択',
+              value: IMAGE_ACTION_VALUE,
+              action: 'open_image_picker',
+            },
+            { label: '品目を確定する', value: NO_MORE_ITEMS_VALUE },
+          ],
+          allowFreeText: true,
+        },
+      ];
+    },
     acceptResponse: (value): SlotPatch =>
       value === NO_MORE_ITEMS_VALUE ? { meta: { noMoreItems: true } } : {},
     llmHint: ADD_ITEM_LLM_HINT_MORE,
   };
 }
 
-// ---------- 依頼先選択（個人/事業者スポット用） ----------
+// ---------- 品目レビュー / 無料引取候補フォーム / グループ化 provider 選択 ----------
 
-const PROVIDER_LABELS: ProviderChoice[] = [
-  '無料引取',
+/** 残品目グループ化 picker 用の provider 4択（無料引取は別経路）。 */
+const GROUPED_PROVIDERS: ProviderChoice[] = [
+  '民間事業者に依頼',
   '自治体に依頼',
   '訪問買取',
   'ネット買取',
-  '民間事業者に依頼',
 ];
-
-/** 依頼先選択用の品目別サマリー文を返す（複数品目のときのみ非空）。 */
-function providerSummaryText(slots: Slots, currentItemId: string): string | null {
-  if (slots.items.length <= 1) return null;
-  const lines = slots.items.map((i, idx) => {
-    const a = slots.providerAssignments.find((x) => x.itemId === i.id);
-    const status = a?.provider
-      ? `→ ${a.provider}`
-      : i.id === currentItemId
-        ? '← 選択中'
-        : '(未選択)';
-    return `${idx + 1}. ${i.label} ${status}`;
-  });
-  return `【品目別の依頼先】\n${lines.join('\n')}`;
-}
 
 /** 希望回収日時用の品目別サマリー文を返す（民間事業者依頼の品目が複数あるときのみ非空）。 */
 function dateSummaryText(slots: Slots, currentItemId: string): string | null {
@@ -274,29 +267,132 @@ function dateSummaryText(slots: Slots, currentItemId: string): string | null {
   return `【品目別の希望回収日時】\n${lines.join('\n')}`;
 }
 
-export function pickProviderStep(item: Item, slots: Slots): Step {
-  const summary = providerSummaryText(slots, item.id);
+/**
+ * 品目確定直後に品目リストを総覧する step。
+ * - 無料引取候補が **ある** 場合: 候補に印を付けて「詳細を確認する」chip を出す
+ * - 候補が **ない** 場合: 「次へ」chip だけ出して進む
+ * いずれも acceptResponse で meta.itemsReviewed=true を立てて次のフェーズに移行。
+ */
+export function itemsReviewStep(slots: Slots): Step {
+  const candidates = slots.items.filter(isFreeProviderEligible);
+  const hasCandidates = candidates.length > 0;
+  const lines = slots.items.map((i, idx) => {
+    const mark = isFreeProviderEligible(i) ? ' ♻️無料引取候補' : '';
+    return `${idx + 1}. ${i.label}${mark}`;
+  });
+  const body = hasCandidates
+    ? `【ご登録品目】\n${lines.join('\n')}\n\n♻️ がついた品目は状態によっては無料引取が可能です。次の画面で詳細を伺います。`
+    : `【ご登録品目】\n${lines.join('\n')}\n\n回収方法をうかがいます。`;
   return {
-    id: `provider.pick.${item.id}`,
+    id: 'items.review',
     render: () => [
-      ...(summary ? [{ kind: 'text' as const, text: summary }] : []),
+      { kind: 'text', text: body },
       {
         kind: 'chips',
-        stepId: `provider.pick.${item.id}`,
-        prompt: `「${item.label}」の依頼先を選んでください`,
-        options: PROVIDER_LABELS.map((label) => ({
-          label,
-          value: label,
-          // MVP: 「自治体に依頼」は常に disabled。
-          disabled: label === '自治体に依頼',
-          disabledReason: label === '自治体に依頼' ? 'この地域では未対応です' : undefined,
-        })),
-        allowFreeText: true,
+        stepId: 'items.review',
+        options: [
+          {
+            label: hasCandidates ? '無料引取候補の詳細を確認する' : '次へ',
+            value: 'ack',
+          },
+        ],
       },
     ],
-    acceptResponse: (value) => ({
-      providerAssignments: [{ itemId: item.id, provider: value as ProviderChoice }],
-    }),
+    acceptResponse: () => ({ meta: { itemsReviewed: true } }),
+  };
+}
+
+/**
+ * 無料引取候補1品目の家電情報フォーム。
+ * - 「無料で引き取り依頼する」 → providerAssignments に '無料引取' をセット
+ * - 「キャンセル（他の方法）」 → providerAssignments には触らず、grouped picker へ流す
+ * いずれも freeProviderReviewedItemIds に当該 id を追加。
+ */
+export function freeProviderFormStep(item: Item): Step {
+  return {
+    id: `freeProvider.form.${item.id}`,
+    render: () => [
+      {
+        kind: 'widget',
+        widget: 'free_provider_form',
+        stepId: `freeProvider.form.${item.id}`,
+        itemId: item.id,
+        itemLabel: item.label,
+        defaults: {
+          manufacturer: item.manufacturer,
+          yearOfManufacture: item.yearOfManufacture,
+          capacity: item.capacity,
+        },
+        prompt: `「${item.label}」の状態を教えてください。情報を入力して「無料で引き取り依頼する」を押すと、無料引取の対象として確定します。`,
+      },
+    ],
+    acceptResponse: (value): SlotPatch => {
+      const v = value as {
+        action?: 'confirm' | 'cancel';
+        manufacturer?: string;
+        yearOfManufacture?: string;
+        capacity?: string;
+      };
+      const itemPatch = {
+        id: item.id,
+        manufacturer: v.manufacturer,
+        yearOfManufacture: v.yearOfManufacture,
+        capacity: v.capacity,
+      };
+      if (v.action === 'confirm') {
+        return {
+          items: [itemPatch],
+          providerAssignments: [{ itemId: item.id, provider: '無料引取' }],
+          meta: { freeProviderReviewedItemIds: [item.id] },
+        };
+      }
+      // cancel: 入力済の属性は保持しつつ provider は未割り当てのまま
+      return {
+        items: [itemPatch],
+        meta: { freeProviderReviewedItemIds: [item.id] },
+      };
+    },
+  };
+}
+
+/**
+ * 残品目をチェックボックスで複数選択し、1つの provider を割り当てる step。
+ * 1グループ確定後、まだ provider 未割り当て品目があれば state machine が再度返す。
+ */
+export function groupedProviderPickStep(slots: Slots): Step {
+  const remaining = slots.items.filter((i) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === i.id);
+    return !a?.provider;
+  });
+  return {
+    id: 'provider.groupedPick',
+    render: () => [
+      {
+        kind: 'widget',
+        widget: 'grouped_provider_pick',
+        stepId: 'provider.groupedPick',
+        items: remaining.map((i) => ({ id: i.id, label: i.label })),
+        providers: GROUPED_PROVIDERS,
+        // MVP: 自治体は地域未対応で disabled。
+        disabledProviders: [
+          { provider: '自治体に依頼', reason: 'この地域では未対応です' },
+        ],
+        prompt:
+          remaining.length === slots.items.length
+            ? '同じ方法で出す品目をチェックして、回収方法を選んでください。'
+            : '残りの品目で同じ方法で出すものをチェックして、回収方法を選んでください。',
+      },
+    ],
+    acceptResponse: (value): SlotPatch => {
+      const v = value as { itemIds?: string[]; provider?: ProviderChoice };
+      if (!v.itemIds || v.itemIds.length === 0 || !v.provider) return {};
+      return {
+        providerAssignments: v.itemIds.map((id) => ({
+          itemId: id,
+          provider: v.provider,
+        })),
+      };
+    },
   };
 }
 
@@ -319,47 +415,6 @@ export function pickDatesStep(item: Item, slots: Slots): Step {
         { itemId: item.id, preferredDates: value as PreferredDate[] },
       ],
     }),
-  };
-}
-
-/**
- * 1品目目の依頼先選択後、残り品目に同じ依頼先を一括適用するか確認する step。
- * - "unify": 残り全品目に同じ provider を適用 + meta.bulkProviderAsked=true
- * - "per_item": meta.bulkProviderAsked=true のみ（後続で1品目ずつ聞く）
- */
-export function bulkProviderConfirmStep(slots: Slots): Step {
-  const filledProvider =
-    slots.providerAssignments.find((a) => a.provider)?.provider ?? null;
-  const itemsWithoutProvider = slots.items.filter((item) => {
-    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
-    return !a?.provider;
-  });
-  const remainingCount = itemsWithoutProvider.length;
-  return {
-    id: 'provider.bulkConfirm',
-    render: () => [
-      {
-        kind: 'chips',
-        stepId: 'provider.bulkConfirm',
-        prompt: `他の${remainingCount}品目も同じ「${filledProvider ?? ''}」にしますか?`,
-        options: [
-          { label: `全部「${filledProvider ?? ''}」に統一`, value: 'unify' },
-          { label: '品目ごとに個別に選ぶ', value: 'per_item' },
-        ],
-      },
-    ],
-    acceptResponse: (value): SlotPatch => {
-      if (value === 'unify' && filledProvider) {
-        return {
-          providerAssignments: itemsWithoutProvider.map((i) => ({
-            itemId: i.id,
-            provider: filledProvider,
-          })),
-          meta: { bulkProviderAsked: true },
-        };
-      }
-      return { meta: { bulkProviderAsked: true } };
-    },
   };
 }
 

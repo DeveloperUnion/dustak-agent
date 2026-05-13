@@ -26,11 +26,13 @@ import {
   STEP_contactNameKana,
   STEP_phone,
   STEP_email,
-  pickProviderStep,
+  itemsReviewStep,
+  freeProviderFormStep,
+  groupedProviderPickStep,
   pickDatesStep,
-  bulkProviderConfirmStep,
   bulkDateConfirmStep,
 } from './shared';
+import { isFreeProviderEligible } from '@/lib/mocks/freeProviderEligibility';
 
 export const businessSpotNextStep: NextStepFn = (slots) => {
   // 事業者フローの一番最初にマニフェスト交付義務の説明を提示する
@@ -50,21 +52,24 @@ export const businessSpotNextStep: NextStepFn = (slots) => {
   if (slots.items.length === 0) return addFirstItemStep();
   if (slots.meta.noMoreItems !== true) return addMoreItemStep();
 
-  // ----- 依頼先 phase -----
-  const providersSet = slots.providerAssignments.filter((a) => a.provider).length;
-  if (
-    providersSet === 1 &&
-    slots.items.length > 1 &&
-    !slots.meta.bulkProviderAsked
-  ) {
-    return bulkProviderConfirmStep(slots);
-  }
-  for (const item of slots.items) {
-    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
-    if (!a?.provider) return pickProviderStep(item, slots);
+  // ----- 品目レビュー phase -----
+  if (!slots.meta.itemsReviewed) return itemsReviewStep(slots);
+
+  // ----- 無料引取候補フォーム phase -----
+  const reviewedIds = slots.meta.freeProviderReviewedItemIds ?? [];
+  const freeCandidates = slots.items.filter(isFreeProviderEligible);
+  for (const cand of freeCandidates) {
+    if (!reviewedIds.includes(cand.id)) return freeProviderFormStep(cand);
   }
 
-  // ----- 希望回収日時 phase -----
+  // ----- 残品目のグループ化 provider pick phase -----
+  const needsProvider = slots.items.some((item) => {
+    const a = slots.providerAssignments.find((x) => x.itemId === item.id);
+    return !a?.provider;
+  });
+  if (needsProvider) return groupedProviderPickStep(slots);
+
+  // ----- 希望回収日時 phase（民間事業者依頼分）-----
   const itemsNeedingDates = slots.items.filter((item) => {
     const a = slots.providerAssignments.find((x) => x.itemId === item.id);
     return a?.provider === '民間事業者に依頼';

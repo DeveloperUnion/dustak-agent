@@ -6,11 +6,16 @@ import type { FlowKind, Slots } from '@/lib/slots/types';
 import { emptySlots } from '@/lib/slots/types';
 import { applySlotPatch, type SlotPatch } from '@/lib/slots/merge';
 
+export interface DetectedItemInput {
+  name: string;
+  info?: string;
+}
+
 type ChatResponseInput =
   | { kind: 'init' }
   | { kind: 'step'; stepId: string; value: unknown }
   | { kind: 'text'; text: string }
-  | { kind: 'image'; detectedNames: string[] };
+  | { kind: 'image'; detectedItems: DetectedItemInput[] };
 
 interface ApiResult {
   /** サーバーが確定/継続している flow。null=まだ未確定。 */
@@ -28,7 +33,8 @@ interface HistorySnapshot {
   /** スナップショット時点での messages.length。undo 時にここまで slice する。 */
   messagesLength: number;
   done: boolean;
-  pendingDetectedNames: string[] | null;
+  pendingDetectedItems: DetectedItemInput[] | null;
+  pendingInitialText: string | null;
 }
 
 interface ChatState {
@@ -45,10 +51,17 @@ interface ChatState {
   slotsHistory: HistorySnapshot[];
 
   /**
-   * flow=null 中に画像ピッカーで蓄積された検出品目。
+   * flow=null 中に画像ピッカーで蓄積された検出品目（name + info）。
    * flow が確定するタイミングでサーバー側 extractor に同梱され、items[] に投入される。
    */
-  pendingDetectedNames: string[] | null;
+  pendingDetectedItems: DetectedItemInput[] | null;
+
+  /**
+   * flow=null 中のユーザーの最初の自由発話。
+   * flow.pick chip 押下時にサーバへ同梱され、extractor 経由で items[] 等に投入される。
+   * 最初の発話のみ保持し、その後の発話では上書きしない。
+   */
+  pendingInitialText: string | null;
 
   /** チャット画面の初期化。初回挨拶を取りに行く。 */
   initSession: () => Promise<void>;
@@ -58,7 +71,7 @@ interface ChatState {
   /** チップ/カレンダー等の構造化応答を送る */
   sendStepResponse: (stepId: string, value: unknown, displayLabel: string) => Promise<void>;
   /** ImageModel の検出結果を送る */
-  sendImageDetection: (detectedNames: string[]) => Promise<void>;
+  sendImageDetection: (detectedItems: DetectedItemInput[]) => Promise<void>;
 
   /** 直近のユーザー応答を取り消し、その応答を送る前の状態に戻す。スタック式なので連打で複数回戻れる。 */
   undo: () => void;
@@ -82,7 +95,8 @@ async function callApi(
   flow: FlowKind | null,
   slots: Slots | null,
   response: ChatResponseInput,
-  pendingDetectedNames?: string[] | null,
+  pendingDetectedItems?: DetectedItemInput[] | null,
+  pendingInitialText?: string | null,
 ): Promise<ApiResult> {
   const res = await fetch('/api/chat', {
     method: 'POST',
@@ -91,9 +105,10 @@ async function callApi(
       flow,
       slots,
       response,
-      ...(pendingDetectedNames && pendingDetectedNames.length > 0
-        ? { pendingDetectedNames }
+      ...(pendingDetectedItems && pendingDetectedItems.length > 0
+        ? { pendingDetectedItems }
         : {}),
+      ...(pendingInitialText ? { pendingInitialText } : {}),
     }),
   });
   if (!res.ok) {
@@ -113,7 +128,8 @@ export const useChatSession = create<ChatState>((set, get) => ({
   done: false,
   error: null,
   slotsHistory: [],
-  pendingDetectedNames: null,
+  pendingDetectedItems: null,
+  pendingInitialText: null,
 
   reset: () =>
     set({
@@ -124,7 +140,8 @@ export const useChatSession = create<ChatState>((set, get) => ({
       done: false,
       error: null,
       slotsHistory: [],
-      pendingDetectedNames: null,
+      pendingDetectedItems: null,
+      pendingInitialText: null,
     }),
 
   initSession: async () => {
@@ -136,7 +153,8 @@ export const useChatSession = create<ChatState>((set, get) => ({
       done: false,
       error: null,
       slotsHistory: [],
-      pendingDetectedNames: null,
+      pendingDetectedItems: null,
+      pendingInitialText: null,
     });
     try {
       const r = await callApi(null, null, { kind: 'init' });
@@ -147,14 +165,15 @@ export const useChatSession = create<ChatState>((set, get) => ({
   },
 
   sendText: async (text) => {
-    const { flow, slots, messages, done, slotsHistory, pendingDetectedNames } = get();
+    const { flow, slots, messages, done, slotsHistory, pendingDetectedItems, pendingInitialText } = get();
     if (!text.trim()) return;
     const snapshot: HistorySnapshot = {
       flow,
       slots,
       messagesLength: messages.length,
       done,
-      pendingDetectedNames: get().pendingDetectedNames,
+      pendingDetectedItems,
+      pendingInitialText,
     };
     const userMsg: ChatMessage = {
       role: 'user',
@@ -162,18 +181,23 @@ export const useChatSession = create<ChatState>((set, get) => ({
       createdAt: Date.now(),
       meta: { source: 'free_text' },
     };
+    // flow=null かつ未保持なら、この text を「最初の発話」として保持
+    // （後で flow.pick 押下時に extractor へ同梱送信される）
+    const nextPendingInitialText =
+      flow === null && !pendingInitialText ? text : pendingInitialText;
     set({
       messages: [...messages, userMsg],
       slotsHistory: [...slotsHistory, snapshot],
       loading: true,
       error: null,
+      pendingInitialText: nextPendingInitialText,
     });
     try {
       const r = await callApi(
         flow,
         flow ? slots : null,
         { kind: 'text', text },
-        pendingDetectedNames,
+        pendingDetectedItems,
       );
       handleApiResult(set, get, r, null);
     } catch (e) {
@@ -182,13 +206,14 @@ export const useChatSession = create<ChatState>((set, get) => ({
   },
 
   sendStepResponse: async (stepId, value, displayLabel) => {
-    const { flow, slots, messages, done, slotsHistory, pendingDetectedNames } = get();
+    const { flow, slots, messages, done, slotsHistory, pendingDetectedItems, pendingInitialText } = get();
     const snapshot: HistorySnapshot = {
       flow,
       slots,
       messagesLength: messages.length,
       done,
-      pendingDetectedNames: get().pendingDetectedNames,
+      pendingDetectedItems,
+      pendingInitialText,
     };
     const userMsg: ChatMessage = {
       role: 'user',
@@ -202,12 +227,15 @@ export const useChatSession = create<ChatState>((set, get) => ({
       loading: true,
       error: null,
     });
+    // flow.pick chip 押下時のみ、保持済の初回テキストを extractor へ流す
+    const includeInitialText = flow === null && stepId === 'flow.pick';
     try {
       const r = await callApi(
         flow,
         flow ? slots : null,
         { kind: 'step', stepId, value },
-        pendingDetectedNames,
+        pendingDetectedItems,
+        includeInitialText ? pendingInitialText : undefined,
       );
       handleApiResult(set, get, r, null);
     } catch (e) {
@@ -215,39 +243,40 @@ export const useChatSession = create<ChatState>((set, get) => ({
     }
   },
 
-  sendImageDetection: async (detectedNames) => {
-    const { flow, slots, messages, done, slotsHistory } = get();
-    if (detectedNames.length === 0) return;
+  sendImageDetection: async (detectedItems) => {
+    const { flow, slots, messages, done, slotsHistory, pendingInitialText } = get();
+    if (detectedItems.length === 0) return;
     const snapshot: HistorySnapshot = {
       flow,
       slots,
       messagesLength: messages.length,
       done,
-      pendingDetectedNames: get().pendingDetectedNames,
+      pendingDetectedItems: get().pendingDetectedItems,
+      pendingInitialText,
     };
-    const summary = `【画像から検出】${detectedNames.join(', ')}`;
+    const summary = `【画像から検出】${detectedItems.map((d) => d.name).join(', ')}`;
     const userMsg: ChatMessage = {
       role: 'user',
       text: summary,
       createdAt: Date.now(),
       meta: { source: 'image' },
     };
-    // flow=null のときは pendingDetectedNames に蓄積（次の API 呼び出しで送信）
+    // flow=null のときは pendingDetectedItems に蓄積（次の API 呼び出しで送信）
     const isFlowResolved = flow !== null;
     set({
       messages: [...messages, userMsg],
       slotsHistory: [...slotsHistory, snapshot],
       loading: true,
       error: null,
-      pendingDetectedNames: isFlowResolved ? get().pendingDetectedNames : detectedNames,
+      pendingDetectedItems: isFlowResolved ? get().pendingDetectedItems : detectedItems,
     });
     try {
       const r = await callApi(
         flow,
         isFlowResolved ? slots : null,
-        { kind: 'image', detectedNames },
+        { kind: 'image', detectedItems },
         // flow 確定済みなら通常通り extractor が処理する。flow=null なら server 側で flow pick chips を返す
-        // （pendingDetectedNames はこの呼び出しでは送らない。蓄積はクライアント側に保持し、flow.pick 時に同梱される）
+        // （pendingDetectedItems はこの呼び出しでは送らない。蓄積はクライアント側に保持し、flow.pick 時に同梱される）
         undefined,
       );
       handleApiResult(set, get, r, null);
@@ -266,20 +295,22 @@ export const useChatSession = create<ChatState>((set, get) => ({
       done: last.done,
       messages: messages.slice(0, last.messagesLength),
       slotsHistory: slotsHistory.slice(0, -1),
-      pendingDetectedNames: last.pendingDetectedNames,
+      pendingDetectedItems: last.pendingDetectedItems,
+      pendingInitialText: last.pendingInitialText,
       error: null,
     });
   },
 
   applyConfirmationEdit: (mutate) => {
-    const { flow, slots, messages, done, slotsHistory, loading, pendingDetectedNames } = get();
+    const { flow, slots, messages, done, slotsHistory, loading, pendingDetectedItems, pendingInitialText } = get();
     if (loading || !flow) return;
     const snapshot: HistorySnapshot = {
       flow,
       slots,
       messagesLength: messages.length,
       done,
-      pendingDetectedNames,
+      pendingDetectedItems,
+      pendingInitialText,
     };
     set({
       slots: mutate(slots),
@@ -289,14 +320,15 @@ export const useChatSession = create<ChatState>((set, get) => ({
   },
 
   editField: async (mutate) => {
-    const { flow, slots, messages, done, slotsHistory, loading } = get();
+    const { flow, slots, messages, done, slotsHistory, loading, pendingInitialText } = get();
     if (loading || !flow) return;
     const snapshot: HistorySnapshot = {
       flow,
       slots,
       messagesLength: messages.length,
       done,
-      pendingDetectedNames: get().pendingDetectedNames,
+      pendingDetectedItems: get().pendingDetectedItems,
+      pendingInitialText,
     };
     const newSlots = mutate(slots);
     set({
@@ -347,10 +379,11 @@ function handleApiResult(set: SetFn, get: GetFn, r: ApiResult, _unused: null) {
   if (parts.length > 0) {
     newMessages.push({ role: 'assistant', parts, createdAt: Date.now() });
   }
-  // flow が今回確定したタイミングで pendingDetectedNames をクリア
-  // （サーバー側で items[] に投入済み）
-  const pendingDetectedNames =
-    prevFlow === null && nextFlow !== null ? null : get().pendingDetectedNames;
+  // flow が今回確定したタイミングで pendingDetectedItems / pendingInitialText をクリア
+  // （サーバー側で extractor を通って items[] に投入済み）
+  const flowJustResolved = prevFlow === null && nextFlow !== null;
+  const pendingDetectedItems = flowJustResolved ? null : get().pendingDetectedItems;
+  const pendingInitialText = flowJustResolved ? null : get().pendingInitialText;
 
   set({
     flow: nextFlow,
@@ -358,6 +391,7 @@ function handleApiResult(set: SetFn, get: GetFn, r: ApiResult, _unused: null) {
     messages: newMessages,
     loading: false,
     done: r.done,
-    pendingDetectedNames,
+    pendingDetectedItems,
+    pendingInitialText,
   });
 }

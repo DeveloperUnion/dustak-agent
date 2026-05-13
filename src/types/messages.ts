@@ -45,7 +45,38 @@ export interface AddressPickerWidgetPart {
   prompt?: string;
 }
 
-export type WidgetPart = CalendarWidgetPart | AddressPickerWidgetPart;
+/** 無料引取候補の家電情報フォーム。年式/メーカー/容量を聞き、確定or キャンセル。 */
+export interface FreeProviderFormWidgetPart {
+  kind: 'widget';
+  widget: 'free_provider_form';
+  stepId?: string;
+  prompt?: string;
+  itemId: string;
+  itemLabel: string;
+  defaults?: {
+    manufacturer?: string;
+    yearOfManufacture?: string;
+    capacity?: string;
+  };
+}
+
+/** 残品目をチェックボックスで複数選択し、1つの provider を割り当てる。 */
+export interface GroupedProviderPickWidgetPart {
+  kind: 'widget';
+  widget: 'grouped_provider_pick';
+  stepId?: string;
+  prompt?: string;
+  items: Array<{ id: string; label: string }>;
+  providers: string[];
+  /** disabled な provider と理由を任意で渡せる。 */
+  disabledProviders?: Array<{ provider: string; reason: string }>;
+}
+
+export type WidgetPart =
+  | CalendarWidgetPart
+  | AddressPickerWidgetPart
+  | FreeProviderFormWidgetPart
+  | GroupedProviderPickWidgetPart;
 
 export type AssistantPart = TextPart | ChipsPart | WidgetPart;
 

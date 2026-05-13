@@ -417,6 +417,51 @@ export function ConfirmationView({ slots, flow, onConfirm, onEdit, onApplyEdit }
                     />
                   )}
                 />
+                <Row
+                  label="メーカー"
+                  value={it.manufacturer}
+                  editor={(onClose) => (
+                    <TextEditor
+                      initial={it.manufacturer ?? ''}
+                      onSave={(v) => {
+                        patchItem({ manufacturer: v || undefined });
+                        onClose();
+                      }}
+                      onCancel={onClose}
+                      placeholder="例: Panasonic"
+                    />
+                  )}
+                />
+                <Row
+                  label="年式"
+                  value={it.yearOfManufacture}
+                  editor={(onClose) => (
+                    <TextEditor
+                      initial={it.yearOfManufacture ?? ''}
+                      onSave={(v) => {
+                        patchItem({ yearOfManufacture: v || undefined });
+                        onClose();
+                      }}
+                      onCancel={onClose}
+                      placeholder="例: 2020"
+                    />
+                  )}
+                />
+                <Row
+                  label="容量"
+                  value={it.capacity}
+                  editor={(onClose) => (
+                    <TextEditor
+                      initial={it.capacity ?? ''}
+                      onSave={(v) => {
+                        patchItem({ capacity: v || undefined });
+                        onClose();
+                      }}
+                      onCancel={onClose}
+                      placeholder="例: 300L / 8kg / 6畳"
+                    />
+                  )}
+                />
                 {flow === 'business_recurring' && (
                   <>
                     <Row

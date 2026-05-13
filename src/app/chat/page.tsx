@@ -110,7 +110,7 @@ export default function ChatPage() {
       )}
       <Composer
         onSendText={(text) => sendText(text)}
-        onSendImageDetection={(names) => sendImageDetection(names)}
+        onSendImageDetection={(items) => sendImageDetection(items)}
         disabled={loading}
         pickerOpen={pickerOpen}
         pickerError={pickerError}

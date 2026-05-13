@@ -75,6 +75,9 @@ const ItemSchema = z.object({
   estimatedQuantity: z.string().optional(),
   frequency: FrequencySchema.optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  manufacturer: z.string().optional(),
+  yearOfManufacture: z.string().optional(),
+  capacity: z.string().optional(),
 });
 
 const PreferredDateSchema = z.object({
@@ -106,7 +109,8 @@ const MetaSchema = z
     noMoreItems: z.boolean().optional(),
     confirmedCategories: z.boolean().optional(),
     acknowledgedManifest: z.boolean().optional(),
-    bulkProviderAsked: z.boolean().optional(),
+    itemsReviewed: z.boolean().optional(),
+    freeProviderReviewedItemIds: z.array(z.string()).optional(),
     bulkDateAsked: z.boolean().optional(),
   })
   .partial();
@@ -218,6 +222,9 @@ export function validateSlotPatch(raw: unknown): ValidatedSlotPatch {
         ['estimatedQuantity', z.string()],
         ['frequency', FrequencySchema],
         ['startDate', z.string().regex(/^\d{4}-\d{2}-\d{2}$/)],
+        ['manufacturer', z.string()],
+        ['yearOfManufacture', z.string()],
+        ['capacity', z.string()],
       ];
       for (const [k, schema] of fieldSchemas) {
         if (it[k] === undefined) continue;
@@ -275,9 +282,14 @@ export function validateSlotPatch(raw: unknown): ValidatedSlotPatch {
       if (typeof m.acknowledgedManifest === 'boolean') out.acknowledgedManifest = m.acknowledgedManifest;
       else dropped.push('meta.acknowledgedManifest');
     }
-    if (m.bulkProviderAsked !== undefined) {
-      if (typeof m.bulkProviderAsked === 'boolean') out.bulkProviderAsked = m.bulkProviderAsked;
-      else dropped.push('meta.bulkProviderAsked');
+    if (m.itemsReviewed !== undefined) {
+      if (typeof m.itemsReviewed === 'boolean') out.itemsReviewed = m.itemsReviewed;
+      else dropped.push('meta.itemsReviewed');
+    }
+    if (m.freeProviderReviewedItemIds !== undefined) {
+      const r = z.array(z.string()).safeParse(m.freeProviderReviewedItemIds);
+      if (r.success) out.freeProviderReviewedItemIds = r.data;
+      else dropped.push('meta.freeProviderReviewedItemIds');
     }
     if (m.bulkDateAsked !== undefined) {
       if (typeof m.bulkDateAsked === 'boolean') out.bulkDateAsked = m.bulkDateAsked;

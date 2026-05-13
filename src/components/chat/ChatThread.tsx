@@ -6,6 +6,11 @@ import { TextBubble } from './TextBubble';
 import { ChipsBubble } from './ChipsBubble';
 import { CalendarWidget, type CalendarSelection } from './CalendarWidget';
 import { AddressPickerWidget } from './AddressPickerWidget';
+import { FreeProviderFormWidget, type FreeProviderFormResult } from './FreeProviderFormWidget';
+import {
+  GroupedProviderPickWidget,
+  type GroupedProviderPickResult,
+} from './GroupedProviderPickWidget';
 import type { AddressComponents } from '@/lib/slots/types';
 
 interface Props {
@@ -142,6 +147,36 @@ export function ChatThread({ messages, loading, canUndo, onUndo, onStepResponse,
                     }}
                     onCancel={() => {
                       /* noop */
+                    }}
+                  />
+                );
+              }
+              if (p.kind === 'widget' && p.widget === 'free_provider_form') {
+                return (
+                  <FreeProviderFormWidget
+                    key={j}
+                    part={p}
+                    disabled={!isLast || loading}
+                    createdAt={j === m.parts.length - 1 ? m.createdAt : undefined}
+                    showTail={partShowTail}
+                    onSubmit={(result: FreeProviderFormResult, displayLabel: string) => {
+                      if (!p.stepId) return;
+                      onStepResponse(p.stepId, result, displayLabel);
+                    }}
+                  />
+                );
+              }
+              if (p.kind === 'widget' && p.widget === 'grouped_provider_pick') {
+                return (
+                  <GroupedProviderPickWidget
+                    key={j}
+                    part={p}
+                    disabled={!isLast || loading}
+                    createdAt={j === m.parts.length - 1 ? m.createdAt : undefined}
+                    showTail={partShowTail}
+                    onSubmit={(result: GroupedProviderPickResult, displayLabel: string) => {
+                      if (!p.stepId) return;
+                      onStepResponse(p.stepId, result, displayLabel);
                     }}
                   />
                 );
