@@ -19,6 +19,7 @@ import { getOpenAI, CHAT_MODEL } from '@/lib/llm/openai';
 import { extractorPrompt, flowClassifierPrompt } from '@/lib/llm/prompts';
 import { EXTRACTOR_JSON_SCHEMA, FLOW_CLASSIFIER_JSON_SCHEMA } from '@/lib/llm/schema';
 import { nextStep } from '@/lib/flow/runFlow';
+import { matchBusinessRecurringPreset } from '@/lib/flow/presets';
 import { applySlotPatch, type SlotPatch } from '@/lib/slots/merge';
 import { validateSlotPatch } from '@/lib/slots/schema';
 import {
@@ -268,6 +269,21 @@ export async function POST(req: Request) {
           }
         }
 
+        // 決定論的なプリセットマッチ: extractor が「総称ワード」として落とした場合の救済。
+        // 初回発話が business_recurring のプリセット品目と完全一致したら items[] に直接投入する。
+        if (
+          picked === 'business_recurring' &&
+          workingSlots.items.length === 0 &&
+          hasPendingInitialText
+        ) {
+          const matched = matchBusinessRecurringPreset(pendingInitialText!.trim());
+          if (matched) {
+            const itemPatch = [{ id: 'item-1', label: matched }];
+            slotPatch = { ...slotPatch, items: [...(slotPatch.items ?? []), ...itemPatch] };
+            workingSlots = applySlotPatch(workingSlots, { items: itemPatch });
+          }
+        }
+
         const next = nextStep(picked, workingSlots);
         const result: ChatApiResult = {
           flow: picked,
@@ -317,11 +333,29 @@ export async function POST(req: Request) {
         const message = err instanceof Error ? err.message : String(err);
         return NextResponse.json({ error: 'processing failed', message }, { status: 502 });
       }
-      const workingSlots = applySlotPatch(initialSlots, extracted.slotPatch);
+      let workingSlots = applySlotPatch(initialSlots, extracted.slotPatch);
+      let outgoingSlotPatch = extracted.slotPatch;
+
+      // 決定論的なプリセットマッチ: extractor が落とした場合の救済（business_recurring のみ）
+      if (
+        determinedFlow === 'business_recurring' &&
+        workingSlots.items.length === 0
+      ) {
+        const matched = matchBusinessRecurringPreset(response.text.trim());
+        if (matched) {
+          const itemPatch = [{ id: 'item-1', label: matched }];
+          outgoingSlotPatch = {
+            ...outgoingSlotPatch,
+            items: [...(outgoingSlotPatch.items ?? []), ...itemPatch],
+          };
+          workingSlots = applySlotPatch(workingSlots, { items: itemPatch });
+        }
+      }
+
       const next = nextStep(determinedFlow, workingSlots);
       const result: ChatApiResult = {
         flow: determinedFlow,
-        slotPatch: extracted.slotPatch,
+        slotPatch: outgoingSlotPatch,
         ackText: extracted.ackText,
         assistantParts: next ? next.render(workingSlots) : [],
         done: next === null,

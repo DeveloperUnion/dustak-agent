@@ -585,7 +585,7 @@ const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'] as const;
 const FREQUENCY_CHIPS: ChipOption[] = [
   { label: '毎日', value: '毎日' },
   {
-    label: '週N日',
+    label: '週○日',
     value: '__group_weekN__',
     subOptions: [1, 2, 3, 4, 5, 6].map((n) => ({
       label: `週${n}日`,
@@ -602,7 +602,6 @@ const FREQUENCY_CHIPS: ChipOption[] = [
     value: '__group_biweekly__',
     subOptions: WEEKDAYS.map((d) => ({ label: `隔週${d}曜`, value: `隔週${d}曜` })),
   },
-  { label: '月2回', value: '月2回' },
 ];
 
 /** 品目 label に応じて適切な数量入力例を返す。 */

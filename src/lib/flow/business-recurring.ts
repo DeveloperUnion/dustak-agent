@@ -29,14 +29,7 @@ import {
   frequencyStep,
   startDateStep,
 } from './shared';
-
-const BUSINESS_RECURRING_ITEM_PRESETS = [
-  '可燃ゴミ',
-  '段ボール・古紙',
-  'ビン・缶・ペットボトル',
-  '不燃ゴミ',
-  '汚泥',
-] as const;
+import { BUSINESS_RECURRING_ITEM_PRESETS } from './presets';
 
 export const businessRecurringNextStep: NextStepFn = (slots) => {
   // 事業者フローの一番最初にマニフェスト交付義務の説明を提示する
