@@ -6,6 +6,7 @@
 import type { Step } from './types';
 import type { Slots, Item, ProviderChoice, PreferredDate, Frequency, AddressComponents } from '@/lib/slots/types';
 import type { SlotPatch } from '@/lib/slots/merge';
+import type { ChipOption } from '@/types/messages';
 import { isFreeProviderEligible } from '@/lib/mocks/freeProviderEligibility';
 
 // ---------- 事業者フロー先頭: マニフェスト説明 ----------
@@ -171,6 +172,8 @@ export const STEP_dischargeMode: Step = {
 
 const NO_MORE_ITEMS_VALUE = '__no_more_items__';
 const IMAGE_ACTION_VALUE = '__action_open_image_picker__';
+const PRESET_ITEM_VALUE_PREFIX = '__preset_item__';
+const OTHER_ITEM_VALUE = '__other_item__';
 
 const ADD_ITEM_LLM_HINT_FIRST = `ユーザー入力を items[] に追加してください。
 新規 item の id は "item-{連番}" 形式で、既存の最大連番 +1 を使ってください（現 items が空なら "item-1"）。
@@ -179,7 +182,32 @@ const ADD_ITEM_LLM_HINT_FIRST = `ユーザー入力を items[] に追加して�
 const ADD_ITEM_LLM_HINT_MORE = `ユーザー入力を items[] に追加してください。新規 id は既存の最大連番 +1。
 追加に成功したら meta.noMoreItems は patch に含めず undefined のままにしてください（ユーザーが「品目を確定する」チップを押すまで items 追加を続けます）。`;
 
-export function addFirstItemStep(): Step {
+function buildPresetChips(presets: readonly string[]): ChipOption[] {
+  return presets.map((label) => ({
+    label,
+    value: `${PRESET_ITEM_VALUE_PREFIX}${label}`,
+  }));
+}
+
+function nextItemId(slots: Slots): string {
+  const maxN = slots.items.reduce((acc, it) => {
+    const m = /^item-(\d+)$/.exec(it.id);
+    return m ? Math.max(acc, parseInt(m[1], 10)) : acc;
+  }, 0);
+  return `item-${maxN + 1}`;
+}
+
+function presetAcceptResponse(value: unknown, slots: Slots): SlotPatch {
+  if (typeof value !== 'string') return {};
+  if (value.startsWith(PRESET_ITEM_VALUE_PREFIX)) {
+    const label = value.slice(PRESET_ITEM_VALUE_PREFIX.length);
+    return { items: [{ id: nextItemId(slots), label }] };
+  }
+  return {};
+}
+
+export function addFirstItemStep(presets?: readonly string[]): Step {
+  const hasPresets = !!presets && presets.length > 0;
   return {
     id: 'items.addFirst',
     render: () => [
@@ -188,6 +216,10 @@ export function addFirstItemStep(): Step {
         kind: 'chips',
         stepId: 'items.addFirst',
         options: [
+          ...(hasPresets ? buildPresetChips(presets!) : []),
+          ...(hasPresets
+            ? [{ label: 'その他', value: OTHER_ITEM_VALUE, requiresFreeText: true } as ChipOption]
+            : []),
           {
             label: '📷 画像から選択',
             value: IMAGE_ACTION_VALUE,
@@ -197,14 +229,16 @@ export function addFirstItemStep(): Step {
         allowFreeText: true,
       },
     ],
+    // プリセット chip は acceptResponse で items に追加。
     // action チップはクライアント側で intercept されサーバーに来ない。
-    // 自由入力は extractor 経由で処理されるため、ここでは noop。
-    acceptResponse: () => ({}),
+    // 自由入力は extractor 経由で処理される。
+    acceptResponse: presetAcceptResponse,
     llmHint: ADD_ITEM_LLM_HINT_FIRST,
   };
 }
 
-export function addMoreItemStep(): Step {
+export function addMoreItemStep(presets?: readonly string[]): Step {
+  const hasPresets = !!presets && presets.length > 0;
   return {
     id: 'items.addMore',
     render: (slots) => {
@@ -219,6 +253,10 @@ export function addMoreItemStep(): Step {
           kind: 'chips',
           stepId: 'items.addMore',
           options: [
+            ...(hasPresets ? buildPresetChips(presets!) : []),
+            ...(hasPresets
+              ? [{ label: 'その他', value: OTHER_ITEM_VALUE, requiresFreeText: true } as ChipOption]
+              : []),
             {
               label: '📷 画像から選択',
               value: IMAGE_ACTION_VALUE,
@@ -230,8 +268,10 @@ export function addMoreItemStep(): Step {
         },
       ];
     },
-    acceptResponse: (value): SlotPatch =>
-      value === NO_MORE_ITEMS_VALUE ? { meta: { noMoreItems: true } } : {},
+    acceptResponse: (value, slots): SlotPatch => {
+      if (value === NO_MORE_ITEMS_VALUE) return { meta: { noMoreItems: true } };
+      return presetAcceptResponse(value, slots);
+    },
     llmHint: ADD_ITEM_LLM_HINT_MORE,
   };
 }
@@ -549,8 +589,7 @@ export const STEP_occupation = freeTextStep(
 
 const FREQUENCY_OPTIONS: Frequency[] = [
   '毎日',
-  '週6',
-  '週5',
+  '週○日',
   '毎週○曜',
   '隔週○曜',
   '月2回',
@@ -628,13 +667,20 @@ export function frequencyStep(item: Item): Step {
         kind: 'chips',
         stepId: `item.frequency.${item.id}`,
         prompt: `「${item.label}」の回収頻度は?`,
-        options: FREQUENCY_OPTIONS.map((f) => ({ label: f, value: f })),
+        options: FREQUENCY_OPTIONS.map((f) => ({
+          label: f,
+          value: f,
+          requiresFreeText: f === 'その他' || f === '週○日',
+        })),
         allowFreeText: true,
       },
     ],
     acceptResponse: (value) => ({
       items: [{ id: item.id, frequency: value as Frequency }],
     }),
+    llmHint: `現在聞いているのは品目「${item.label}」の回収頻度です。
+items[].id = "${item.id}" の frequency をユーザー入力でそのまま埋めてください。
+"週3日" "週6日" "土日のみ" "月末締め" など、固定 enum に無い表現でも、ユーザーの表現を尊重して文字列で入れて構いません。`,
   };
 }
 

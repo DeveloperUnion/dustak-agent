@@ -30,6 +30,14 @@ import {
   startDateStep,
 } from './shared';
 
+const BUSINESS_RECURRING_ITEM_PRESETS = [
+  '可燃ゴミ',
+  '段ボール・古紙',
+  'ビン・缶・ペットボトル',
+  '不燃ゴミ',
+  '汚泥',
+] as const;
+
 export const businessRecurringNextStep: NextStepFn = (slots) => {
   // 事業者フローの一番最初にマニフェスト交付義務の説明を提示する
   if (!slots.meta.acknowledgedManifest) return STEP_manifestNotice;
@@ -43,8 +51,8 @@ export const businessRecurringNextStep: NextStepFn = (slots) => {
   if (!loc.parking) return STEP_parking;
   if (!loc.elevator) return STEP_elevator;
 
-  if (slots.items.length === 0) return addFirstItemStep();
-  if (slots.meta.noMoreItems !== true) return addMoreItemStep();
+  if (slots.items.length === 0) return addFirstItemStep(BUSINESS_RECURRING_ITEM_PRESETS);
+  if (slots.meta.noMoreItems !== true) return addMoreItemStep(BUSINESS_RECURRING_ITEM_PRESETS);
 
   // 品目ごとに 数量・頻度・開始日 を埋める
   for (const item of slots.items) {

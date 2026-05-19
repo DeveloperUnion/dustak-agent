@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ChipsPart, ChipAction } from '@/types/messages';
 
 interface Props {
@@ -25,6 +25,7 @@ function fmtTime(ms?: number): string {
 export function ChipsBubble({ part, onPick, onAction, onFreeText, disabled, createdAt, showTail = true }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [freeText, setFreeText] = useState('');
+  const freeTextRef = useRef<HTMLInputElement>(null);
   const isMulti = part.multi === true;
 
   const toggle = (value: string) => {
@@ -34,6 +35,10 @@ export function ChipsBubble({ part, onPick, onAction, onFreeText, disabled, crea
       if (!opt) return;
       if (opt.action && onAction) {
         onAction(opt.action);
+        return;
+      }
+      if (opt.requiresFreeText) {
+        freeTextRef.current?.focus();
         return;
       }
       onPick(opt.value, opt.label);
@@ -155,6 +160,7 @@ export function ChipsBubble({ part, onPick, onAction, onFreeText, disabled, crea
               <div className="border-t border-[var(--line)] pt-3">
                 <div className="flex items-center gap-2">
                   <input
+                    ref={freeTextRef}
                     type="text"
                     value={freeText}
                     onChange={(e) => setFreeText(e.target.value)}

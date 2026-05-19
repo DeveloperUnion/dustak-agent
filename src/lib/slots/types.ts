@@ -48,8 +48,7 @@ export interface LocationSlot {
 // ステップ2: 品目（定期/スポット共通）
 export type Frequency =
   | '毎日'
-  | '週6'
-  | '週5'
+  | '週○日'
   | '毎週○曜'
   | '隔週○曜'
   | '月2回'
