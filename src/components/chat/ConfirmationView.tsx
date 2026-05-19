@@ -64,7 +64,7 @@ const BUSINESS_FORMS: BusinessForm[] = [
   '有限会社',
   'その他法人',
 ];
-const FREQUENCY_COMMON: Frequency[] = ['毎日', '月2回'];
+const FREQUENCY_COMMON: Frequency[] = ['毎日'];
 
 interface RowProps {
   label: string;
