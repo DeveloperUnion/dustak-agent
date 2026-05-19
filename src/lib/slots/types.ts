@@ -46,14 +46,9 @@ export interface LocationSlot {
 }
 
 // ステップ2: 品目（定期/スポット共通）
-export type Frequency =
-  | '毎日'
-  | '週○日'
-  | '毎週○曜'
-  | '隔週○曜'
-  | '月2回'
-  | '毎月第○○曜'
-  | 'その他';
+// chip の値・ユーザー自由入力どちらも文字列で保持する（"毎日" "毎週水曜" "週3日" "月末締め" 等）。
+// extractor / FrequencySchema も非空文字列で受ける。
+export type Frequency = string;
 
 export interface Item {
   id: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { ChipsPart, ChipAction } from '@/types/messages';
+import type { ChipsPart, ChipAction, ChipOption } from '@/types/messages';
 
 interface Props {
   part: ChipsPart;
@@ -25,16 +25,23 @@ function fmtTime(ms?: number): string {
 export function ChipsBubble({ part, onPick, onAction, onFreeText, disabled, createdAt, showTail = true }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [freeText, setFreeText] = useState('');
+  const [expanded, setExpanded] = useState<ChipOption | null>(null);
   const freeTextRef = useRef<HTMLInputElement>(null);
   const isMulti = part.multi === true;
+
+  const visibleOptions: ChipOption[] = expanded?.subOptions ?? part.options;
 
   const toggle = (value: string) => {
     if (disabled) return;
     if (!isMulti) {
-      const opt = part.options.find((o) => o.value === value);
+      const opt = visibleOptions.find((o) => o.value === value);
       if (!opt) return;
       if (opt.action && onAction) {
         onAction(opt.action);
+        return;
+      }
+      if (opt.subOptions && opt.subOptions.length > 0) {
+        setExpanded(opt);
         return;
       }
       if (opt.requiresFreeText) {
@@ -80,8 +87,25 @@ export function ChipsBubble({ part, onPick, onAction, onFreeText, disabled, crea
             </div>
           )}
 
+          {expanded && (
+            <div className="flex items-center gap-2 mb-2 pl-1.5">
+              <button
+                type="button"
+                onClick={() => setExpanded(null)}
+                disabled={disabled}
+                className="flex items-center gap-1 text-[12px] text-[var(--ink-mute)] hover:text-[var(--brand)] transition-colors"
+              >
+                <svg className="w-[12px] h-[12px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 6l-6 6 6 6" />
+                </svg>
+                戻る
+              </button>
+              <span className="text-[12px] text-[var(--ink-mute)]">/ {expanded.label}</span>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5 pl-1.5">
-            {part.options.map((opt) => {
+            {visibleOptions.map((opt) => {
               const isSelected = selected.has(opt.value);
               const isDisabled = disabled || opt.disabled;
               return (

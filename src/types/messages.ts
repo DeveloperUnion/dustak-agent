@@ -17,6 +17,8 @@ export interface ChipOption {
   action?: ChipAction;
   /** true の場合、クリック時に onPick を発火せず自由入力欄に focus する。allowFreeText: true と併用する。 */
   requiresFreeText?: boolean;
+  /** クリック時に onPick を発火せず、このサブ chip 群に表示を切り替える（ドリルイン）。 */
+  subOptions?: ChipOption[];
 }
 
 export interface ChipsPart {
