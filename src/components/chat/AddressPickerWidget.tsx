@@ -208,10 +208,12 @@ export function AddressPickerWidget({
   };
 
   const handleSubmit = () => {
-    // オートコンプリート候補選択 or 現在地取得で確定された住所のみ受け付ける
-    if (!selectedAddress) return;
+    // オートコンプリート選択 / 現在地取得で確定済みなら components 付きで送る。
+    // 候補にない手入力住所はそのまま query を送る（components は undefined）。
+    const baseAddress = selectedAddress || query.trim();
+    if (!baseAddress) return;
     const detail = buildingDetail.trim();
-    const fullAddress = detail ? `${selectedAddress} ${detail}` : selectedAddress;
+    const fullAddress = detail ? `${baseAddress} ${detail}` : baseAddress;
     const components = selectedComponents
       ? { ...selectedComponents, ...(detail ? { building: detail } : {}) }
       : undefined;
@@ -267,11 +269,11 @@ export function AddressPickerWidget({
                   value={query}
                   onChange={(e) => handleInputChange(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && selectedAddress) {
+                    if (e.key === 'Enter' && query.trim()) {
                       handleSubmit();
                     }
                   }}
-                  placeholder="住所を検索..."
+                  placeholder="住所を検索 / 直接入力もOK"
                   disabled={disabled || closed}
                   className="flex-1 min-w-0 text-[13.5px] text-[var(--text)] placeholder:text-[var(--ink-mute)] bg-transparent focus:outline-none"
                 />
@@ -350,13 +352,20 @@ export function AddressPickerWidget({
               </>
             )}
 
+            {/* 手入力時のヒント（候補未選択 & query あり） */}
+            {!closed && !selectedAddress && query.trim().length > 0 && suggestions.length === 0 && (
+              <div className="text-[11px] text-[var(--ink-mute)] px-1">
+                候補にない場合は入力したまま「確定」できます。
+              </div>
+            )}
+
             {/* アクションボタン */}
             {!closed && (
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={disabled || !selectedAddress}
+                  disabled={disabled || !query.trim()}
                   className="px-5 py-1.5 rounded-full text-[12px] tracking-[0.18em] uppercase bg-[var(--brand)] text-white disabled:bg-[var(--ink-mute)]/40 disabled:cursor-not-allowed transition-all hover:brightness-110"
                 >
                   確定
