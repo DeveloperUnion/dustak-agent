@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type {
   Slots,
   FlowKind,
@@ -743,7 +743,6 @@ function FloorEditor({ current, onSave }: { current?: string; onSave: (v: string
 /** 頻度の編集: よく使うもの + 自由入力 */
 function FrequencyEditor({ current, onSave }: { current?: Frequency; onSave: (v: Frequency) => void }) {
   const [custom, setCustom] = useState('');
-  const customRef = useRef<HTMLInputElement>(null);
   return (
     <div className="mt-1">
       <div className="flex flex-wrap gap-1.5">
@@ -761,21 +760,13 @@ function FrequencyEditor({ current, onSave }: { current?: Frequency; onSave: (v:
             {opt}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => customRef.current?.focus()}
-          className="px-3 py-1.5 rounded-full text-[12px] border border-gray-300 bg-white text-gray-700 hover:border-blue-500 transition-colors"
-        >
-          週○日
-        </button>
       </div>
       <div className="flex items-center gap-2 mt-2">
         <input
-          ref={customRef}
           type="text"
           value={custom}
           onChange={(e) => setCustom(e.target.value)}
-          placeholder="自由入力（例: 週3日、毎週月曜、隔週水曜）"
+          placeholder="自由入力（例: 週3日、毎週月曜、毎月第3月曜）"
           className="flex-1 min-w-0 px-2.5 py-1.5 rounded-md border border-[var(--line-strong)] bg-white text-[13px] focus:outline-none focus:border-[var(--brand)]"
         />
         <button

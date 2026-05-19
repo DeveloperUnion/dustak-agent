@@ -173,7 +173,6 @@ export const STEP_dischargeMode: Step = {
 const NO_MORE_ITEMS_VALUE = '__no_more_items__';
 const IMAGE_ACTION_VALUE = '__action_open_image_picker__';
 const PRESET_ITEM_VALUE_PREFIX = '__preset_item__';
-const OTHER_ITEM_VALUE = '__other_item__';
 
 const ADD_ITEM_LLM_HINT_FIRST = `ユーザー入力を items[] に追加してください。
 新規 item の id は "item-{連番}" 形式で、既存の最大連番 +1 を使ってください（現 items が空なら "item-1"）。
@@ -217,9 +216,6 @@ export function addFirstItemStep(presets?: readonly string[]): Step {
         stepId: 'items.addFirst',
         options: [
           ...(hasPresets ? buildPresetChips(presets!) : []),
-          ...(hasPresets
-            ? [{ label: 'その他', value: OTHER_ITEM_VALUE, requiresFreeText: true } as ChipOption]
-            : []),
           {
             label: '📷 画像から選択',
             value: IMAGE_ACTION_VALUE,
@@ -254,9 +250,6 @@ export function addMoreItemStep(presets?: readonly string[]): Step {
           stepId: 'items.addMore',
           options: [
             ...(hasPresets ? buildPresetChips(presets!) : []),
-            ...(hasPresets
-              ? [{ label: 'その他', value: OTHER_ITEM_VALUE, requiresFreeText: true } as ChipOption]
-              : []),
             {
               label: '📷 画像から選択',
               value: IMAGE_ACTION_VALUE,
@@ -587,14 +580,29 @@ export const STEP_occupation = freeTextStep(
 
 // ---------- 定期回収用: 品目ごとの 数量・頻度・開始日 ----------
 
-const FREQUENCY_OPTIONS: Frequency[] = [
-  '毎日',
-  '週○日',
-  '毎週○曜',
-  '隔週○曜',
-  '月2回',
-  '毎月第○○曜',
-  'その他',
+const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'] as const;
+
+const FREQUENCY_CHIPS: ChipOption[] = [
+  { label: '毎日', value: '毎日' },
+  {
+    label: '週N日',
+    value: '__group_weekN__',
+    subOptions: [1, 2, 3, 4, 5, 6].map((n) => ({
+      label: `週${n}日`,
+      value: `週${n}日`,
+    })),
+  },
+  {
+    label: '毎週○曜',
+    value: '__group_weekly__',
+    subOptions: WEEKDAYS.map((d) => ({ label: `毎週${d}曜`, value: `毎週${d}曜` })),
+  },
+  {
+    label: '隔週○曜',
+    value: '__group_biweekly__',
+    subOptions: WEEKDAYS.map((d) => ({ label: `隔週${d}曜`, value: `隔週${d}曜` })),
+  },
+  { label: '月2回', value: '月2回' },
 ];
 
 /** 品目 label に応じて適切な数量入力例を返す。 */
@@ -667,11 +675,7 @@ export function frequencyStep(item: Item): Step {
         kind: 'chips',
         stepId: `item.frequency.${item.id}`,
         prompt: `「${item.label}」の回収頻度は?`,
-        options: FREQUENCY_OPTIONS.map((f) => ({
-          label: f,
-          value: f,
-          requiresFreeText: f === 'その他' || f === '週○日',
-        })),
+        options: FREQUENCY_CHIPS,
         allowFreeText: true,
       },
     ],
@@ -680,7 +684,7 @@ export function frequencyStep(item: Item): Step {
     }),
     llmHint: `現在聞いているのは品目「${item.label}」の回収頻度です。
 items[].id = "${item.id}" の frequency をユーザー入力でそのまま埋めてください。
-"週3日" "週6日" "土日のみ" "月末締め" など、固定 enum に無い表現でも、ユーザーの表現を尊重して文字列で入れて構いません。`,
+"週3日" "毎週水曜" "土日のみ" "月末締め" など、ユーザーの表現を文字列でそのまま入れて構いません。`,
   };
 }
 
