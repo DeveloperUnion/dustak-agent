@@ -15,6 +15,8 @@ export interface ChipOption {
   disabledReason?: string;
   /** 指定時は onPick ではなくクライアント側ハンドラ（onAction）を発火する */
   action?: ChipAction;
+  /** true の場合、クリック時に onPick を発火せず自由入力欄に focus する。allowFreeText: true と併用する。 */
+  requiresFreeText?: boolean;
 }
 
 export interface ChipsPart {

@@ -31,7 +31,7 @@ export const householdNextStep: NextStepFn = (slots) => {
   if (!loc.buildingKind) return STEP_buildingKind;
   if (!loc.floor) return STEP_floor;
   if (!loc.parking) return STEP_parking;
-  if (!loc.elevator) return STEP_elevator;
+  if (loc.floor !== '1階' && !loc.elevator) return STEP_elevator;
   if (!loc.dischargeMode) return STEP_dischargeMode;
 
   if (slots.items.length === 0) return addFirstItemStep();

@@ -19,9 +19,9 @@ const BuildingKindSchema = z.enum([
 ]);
 const YesNoSchema = z.enum(['あり', 'なし']);
 const DischargeModeSchema = z.enum(['自分で排出', '排出を希望']);
-const FrequencySchema = z.enum([
-  '毎日', '週6', '週5', '毎週○曜', '隔週○曜', '月2回', '毎月第○○曜', 'その他',
-]);
+// frequency は固定 enum ではなく自由表現（"週3日" "土日のみ" 等）も許容するため
+// 非空文字列でゆるく受ける。chip 選択時の固定値も同じパスを通る。
+const FrequencySchema = z.string().min(1);
 const ProviderSchema = z.enum([
   '無料引取', '自治体に依頼', '訪問買取', 'ネット買取', '民間事業者に依頼',
 ]);
