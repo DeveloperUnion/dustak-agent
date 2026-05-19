@@ -49,7 +49,7 @@ export const businessRecurringNextStep: NextStepFn = (slots) => {
   if (!loc.buildingKind) return STEP_buildingKindBusiness;
   if (!loc.floor) return STEP_floor;
   if (!loc.parking) return STEP_parking;
-  if (!loc.elevator) return STEP_elevator;
+  if (loc.floor !== '1階' && !loc.elevator) return STEP_elevator;
 
   if (slots.items.length === 0) return addFirstItemStep(BUSINESS_RECURRING_ITEM_PRESETS);
   if (slots.meta.noMoreItems !== true) return addMoreItemStep(BUSINESS_RECURRING_ITEM_PRESETS);
