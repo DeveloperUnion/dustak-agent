@@ -2,7 +2,7 @@
 //
 // household_spot に加えて:
 // - 業態 (occupation) を聞く（後の業態テンプレ提案・PredictCost に使う）
-// - 業態形態 / 屋号 / 事業者名 / 事業者名カナ
+// - 事業形態 / 屋号
 // - 依頼先選択あり（household と同じ5チップ）
 
 import type { NextStepFn } from './types';
@@ -20,8 +20,6 @@ import {
   STEP_occupation,
   STEP_businessForm,
   STEP_businessStoreName,
-  STEP_businessName,
-  STEP_businessNameKana,
   STEP_contactName,
   STEP_contactNameKana,
   STEP_phone,
@@ -95,8 +93,6 @@ export const businessSpotNextStep: NextStepFn = (slots) => {
   const r = slots.requester;
   if (!r.businessForm) return STEP_businessForm;
   if (!r.storeName) return STEP_businessStoreName;
-  if (!r.businessName) return STEP_businessName;
-  if (!r.businessNameKana) return STEP_businessNameKana;
   if (!r.contactName) return STEP_contactName;
   if (!r.contactNameKana) return STEP_contactNameKana;
   if (!r.phone) return STEP_phone;

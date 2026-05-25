@@ -515,6 +515,11 @@ export const STEP_contactName = freeTextStep(
   'ご担当者のお名前を教えてください。',
   'ユーザー入力を requester.contactName に入れてください。',
 );
+export const STEP_contactNameHousehold = freeTextStep(
+  'requester.contactName',
+  'お名前を教えてください。',
+  'ユーザー入力を requester.contactName に入れてください。',
+);
 export const STEP_contactNameKana = freeTextStep(
   'requester.contactNameKana',
   'お名前のフリガナを教えてください。',
@@ -541,7 +546,7 @@ export const STEP_businessForm: Step = {
     {
       kind: 'chips',
       stepId: 'requester.businessForm',
-      prompt: '業態形態を選んでください',
+      prompt: '事業形態を選んでください',
       options: [
         { label: '個人事業主', value: '個人事業主' },
         { label: '株式会社', value: '株式会社' },
@@ -551,25 +556,26 @@ export const STEP_businessForm: Step = {
       allowFreeText: true,
     },
   ],
-  acceptResponse: (value) => ({
-    requester: { businessForm: value as Slots['requester']['businessForm'] },
-  }),
+  acceptResponse: (value, slots) => {
+    const patch: SlotPatch = {
+      requester: { businessForm: value as Slots['requester']['businessForm'] },
+    };
+    // 個人事業主の場合、屋号は店舗名・事業所名と同一なので自動コピーして再質問を省略
+    if (
+      value === '個人事業主' &&
+      slots.location.storeName &&
+      !slots.requester.storeName
+    ) {
+      patch.requester!.storeName = slots.location.storeName;
+    }
+    return patch;
+  },
 };
 
 export const STEP_businessStoreName = freeTextStep(
   'requester.storeName',
   '屋号を教えてください。',
   'ユーザー入力を requester.storeName に入れてください。',
-);
-export const STEP_businessName = freeTextStep(
-  'requester.businessName',
-  '事業者の正式名称を教えてください。',
-  'ユーザー入力を requester.businessName に入れてください。',
-);
-export const STEP_businessNameKana = freeTextStep(
-  'requester.businessNameKana',
-  '事業者名のフリガナを教えてください。',
-  'ユーザー入力を requester.businessNameKana に入れてください。カタカナ表記を尊重します。',
 );
 
 export const STEP_occupation = freeTextStep(

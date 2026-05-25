@@ -1,7 +1,7 @@
 // 個人スポット（household_spot）フローの state machine。
 //
 // 順序: 場所 → 品目ループ → 品目ごとの依頼先 → 申込者
-// 事業者向けフィールド（屋号・業態形態・産廃分類）は無し。
+// 事業者向けフィールド（屋号・事業形態・産廃分類）は無し。
 
 import type { NextStepFn } from './types';
 import {
@@ -13,7 +13,7 @@ import {
   STEP_dischargeMode,
   addFirstItemStep,
   addMoreItemStep,
-  STEP_contactName,
+  STEP_contactNameHousehold,
   STEP_contactNameKana,
   STEP_phone,
   STEP_email,
@@ -78,7 +78,7 @@ export const householdNextStep: NextStepFn = (slots) => {
   }
 
   const r = slots.requester;
-  if (!r.contactName) return STEP_contactName;
+  if (!r.contactName) return STEP_contactNameHousehold;
   if (!r.contactNameKana) return STEP_contactNameKana;
   if (!r.phone) return STEP_phone;
   if (!r.email) return STEP_email;

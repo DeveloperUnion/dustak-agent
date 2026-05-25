@@ -144,7 +144,7 @@ ${JSON.stringify(slots, null, 2)}
   - manufacturer / yearOfManufacture / capacity は家電など無料引取候補の付帯情報。
     画像検知テキストの "(メーカー: ..., 年式: ..., 容量: ...)" や、ユーザー発話から拾えれば該当品目に詰めてよい。
 - providerAssignments: [{ itemId, provider?, preferredDates? }]
-- requester: { businessForm?, storeName?, businessName?, businessNameKana?, contactName?, contactNameKana?, phone?, email? }
+- requester: { businessForm?, storeName?, contactName?, contactNameKana?, phone?, email? }
 
 ### enum 値
 - buildingKind:
