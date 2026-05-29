@@ -581,34 +581,6 @@ export function ConfirmationView({ slots, flow, onConfirm, onEdit, onApplyEdit }
                   />
                 )}
               />
-              <Row
-                label="事業者氏名"
-                value={requester.businessName}
-                editor={(onClose) => (
-                  <TextEditor
-                    initial={requester.businessName ?? ''}
-                    onSave={(v) => {
-                      patchRequester({ businessName: v || undefined });
-                      onClose();
-                    }}
-                    onCancel={onClose}
-                  />
-                )}
-              />
-              <Row
-                label="事業者氏名(かな)"
-                value={requester.businessNameKana}
-                editor={(onClose) => (
-                  <TextEditor
-                    initial={requester.businessNameKana ?? ''}
-                    onSave={(v) => {
-                      patchRequester({ businessNameKana: v || undefined });
-                      onClose();
-                    }}
-                    onCancel={onClose}
-                  />
-                )}
-              />
             </>
           )}
 
